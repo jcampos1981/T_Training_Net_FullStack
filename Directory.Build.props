@@ -1,0 +1,9 @@
+<Project>
+  <!-- MSBuild busca este archivo hacia arriba desde cada proyecto: lo de aquí aplica a toda la solución. -->
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Los avisos de nulabilidad cuentan como errores: obliga a manejar los null en vez de ignorarlos. -->
+    <WarningsAsErrors>$(WarningsAsErrors);nullable</WarningsAsErrors>
+  </PropertyGroup>
+</Project>

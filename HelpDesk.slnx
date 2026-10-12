@@ -1,2 +1,5 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HelpDesk.Importer/HelpDesk.Importer.csproj" />
+  </Folder>
 </Solution>
