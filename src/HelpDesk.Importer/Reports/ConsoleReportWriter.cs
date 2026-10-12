@@ -1,39 +1,33 @@
 using HelpDesk.Importer.Domain;
-using HelpDesk.Importer.Import;
+using Microsoft.Extensions.Options;
 
 namespace HelpDesk.Importer.Reports;
 
-public static class ConsoleReportWriter
+// Escribe el reporte en stdout. El detalle de la importación (filas rechazadas) va al log.
+public sealed class ConsoleReportWriter(IOptions<ReportOptions> options, TimeProvider clock)
 {
-    private const int OldestOpenCount = 5;
     private const string Unassigned = "Sin asignar";
 
-    public static void WriteImportSummary(IEnumerable<ImportResult> results)
+    private ReportOptions Settings => options.Value;
+
+    public void Write(TicketReport report, int rejectedRows)
     {
-        WriteTitle("Importación");
-
-        foreach (ImportResult result in results)
-        {
-            Console.WriteLine($"{result.Source,-22} {result.Imported.Count,3} importados  {result.Rejected.Count,2} rechazados");
-
-            foreach (var (lineNumber, reason) in result.Rejected)
-            {
-                Console.WriteLine($"    línea {lineNumber}: {reason}");
-            }
-        }
-    }
-
-    public static void WriteReport(TicketReport report, IEnumerable<string> team, DateTimeOffset asOf)
-    {
-        WriteSlaSummary(report, asOf);
-        WriteWorkload(report, team);
+        WriteHeader(report, rejectedRows);
+        WriteSlaSummary(report);
+        WriteWorkload(report);
         WriteOldestOpen(report);
         WriteDuplicates(report);
     }
 
-    private static void WriteSlaSummary(TicketReport report, DateTimeOffset asOf)
+    private void WriteHeader(TicketReport report, int rejectedRows)
     {
-        WriteTitle($"Estado de SLA al {asOf:yyyy-MM-dd HH:mm} UTC");
+        WriteTitle($"Reporte de tickets al {clock.GetUtcNow():yyyy-MM-dd HH:mm} UTC");
+        Console.WriteLine($"{report.TotalTickets} tickets importados, {rejectedRows} filas rechazadas (detalle en el log)");
+    }
+
+    private static void WriteSlaSummary(TicketReport report)
+    {
+        WriteTitle("Estado de SLA");
 
         foreach (var (state, count) in report.CountBySlaState())
         {
@@ -41,11 +35,11 @@ public static class ConsoleReportWriter
         }
     }
 
-    private static void WriteWorkload(TicketReport report, IEnumerable<string> team)
+    private void WriteWorkload(TicketReport report)
     {
         WriteTitle("Carga por agente (tickets abiertos)");
 
-        foreach (var (agent, open, breached) in report.WorkloadByAgent(team))
+        foreach (var (agent, open, breached) in report.WorkloadByAgent(Settings.Team))
         {
             Console.WriteLine($"{agent,-12} {open,2} abiertos  {breached,2} vencidos");
         }
@@ -53,11 +47,11 @@ public static class ConsoleReportWriter
         Console.WriteLine($"{Unassigned,-12} {report.UnassignedOpenTickets(),2} abiertos");
     }
 
-    private static void WriteOldestOpen(TicketReport report)
+    private void WriteOldestOpen(TicketReport report)
     {
-        WriteTitle($"Los {OldestOpenCount} abiertos más antiguos");
+        WriteTitle($"Los {Settings.OldestOpenCount} abiertos más antiguos");
 
-        foreach (Ticket ticket in report.OldestOpen(OldestOpenCount))
+        foreach (Ticket ticket in report.OldestOpen(Settings.OldestOpenCount))
         {
             Console.WriteLine($"{ticket.Id}  {ticket.CreatedAt:yyyy-MM-dd HH:mm}  {ticket.Priority.DisplayName,-8} {ticket.Title}");
         }

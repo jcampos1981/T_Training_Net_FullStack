@@ -1,17 +1,11 @@
 namespace HelpDesk.Importer.Domain;
 
-public sealed class StandardSlaPolicy(TimeProvider clock) : ISlaPolicy
+public sealed class StandardSlaPolicy(SlaOptions options, TimeProvider clock) : ISlaPolicy
 {
-    private const double AtRiskThreshold = 0.8;
-
-    public TimeSpan ResolutionTimeFor(TicketPriority priority) => priority switch
-    {
-        TicketPriority.Critical => TimeSpan.FromHours(4),
-        TicketPriority.High => TimeSpan.FromHours(8),
-        TicketPriority.Medium => TimeSpan.FromHours(24),
-        TicketPriority.Low => TimeSpan.FromHours(72),
-        _ => throw new ArgumentOutOfRangeException(nameof(priority), priority, "Prioridad sin SLA definido.")
-    };
+    public TimeSpan ResolutionTimeFor(TicketPriority priority) =>
+        options.ResolutionHours.TryGetValue(priority, out double hours)
+            ? TimeSpan.FromHours(hours)
+            : throw new ArgumentOutOfRangeException(nameof(priority), priority, "Prioridad sin SLA definido.");
 
     public SlaState Evaluate(Ticket ticket)
     {
@@ -23,10 +17,11 @@ public sealed class StandardSlaPolicy(TimeProvider clock) : ISlaPolicy
         TimeSpan elapsed = clock.GetUtcNow() - ticket.CreatedAt;
         double consumed = elapsed / ResolutionTimeFor(ticket.Priority);
 
+        // El umbral viene de configuración y un patrón solo acepta constantes: por eso va en un "when".
         return consumed switch
         {
             >= 1.0 => SlaState.Breached,
-            >= AtRiskThreshold => SlaState.AtRisk,
+            _ when consumed >= options.AtRiskThreshold => SlaState.AtRisk,
             _ => SlaState.OnTrack
         };
     }

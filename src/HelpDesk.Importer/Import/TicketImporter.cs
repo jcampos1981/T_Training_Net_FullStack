@@ -1,11 +1,13 @@
 using HelpDesk.Importer.Domain;
+using Microsoft.Extensions.Logging;
 
 namespace HelpDesk.Importer.Import;
 
-public sealed class TicketImporter
+public sealed class TicketImporter(ILogger<TicketImporter> logger)
 {
     public async Task<ImportResult> ImportFileAsync(string path, CancellationToken cancellationToken)
     {
+        string source = Path.GetFileName(path);
         List<Ticket> imported = [];
         List<ParseResult.Failure> rejected = [];
 
@@ -17,12 +19,14 @@ public sealed class TicketImporter
                     imported.Add(ticket);
                     break;
                 case ParseResult.Failure failure:
+                    logger.LogWarning("{Source}, línea {LineNumber}: {Reason}", source, failure.LineNumber, failure.Reason);
                     rejected.Add(failure);
                     break;
             }
         }
 
-        return new ImportResult(Path.GetFileName(path), imported, rejected);
+        logger.LogInformation("{Source}: {Imported} importados, {Rejected} rechazados", source, imported.Count, rejected.Count);
+        return new ImportResult(source, imported, rejected);
     }
 
     // Todos los archivos se leen a la vez. Cada importación usa sus propias listas,

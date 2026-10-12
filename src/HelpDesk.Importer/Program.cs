@@ -1,51 +1,55 @@
 using System.Text;
-using HelpDesk.Importer.Common;
-using HelpDesk.Importer.Domain;
-using HelpDesk.Importer.Import;
-using HelpDesk.Importer.Reports;
+using HelpDesk.Importer;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.Options;
 
 Console.OutputEncoding = Encoding.UTF8;
 
-string[] team = ["ana", "luis", "marta", "pedro", "sofia", "jorge"];
-string defaultFolder = Path.Combine(AppContext.BaseDirectory, "samples");
-
-if (ImporterArguments.Parse(args, defaultFolder) is not { } arguments)
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 {
-    Console.Error.WriteLine(ImporterArguments.Usage);
-    return 1;
-}
+    Args = args,
+    // Herramienta de consola: appsettings.json y samples/ se buscan junto al ejecutable,
+    // no en la carpeta desde la que se lanza.
+    ContentRootPath = AppContext.BaseDirectory
+});
 
-string[] csvFiles = Directory.Exists(arguments.Folder)
-    ? [.. Directory.EnumerateFiles(arguments.Folder, "*.csv").Order()]
-    : [];
-
-if (csvFiles.Length == 0)
+builder.Configuration.AddCommandLine(args, new Dictionary<string, string>
 {
-    Console.Error.WriteLine($"No hay archivos .csv en '{arguments.Folder}'.");
-    return 1;
-}
+    ["--as-of"] = "Report:AsOf",
+    ["--folder"] = "Import:Folder"
+});
 
-using var cancellation = new CancellationTokenSource();
-Console.CancelKeyPress += (_, eventArgs) =>
+builder.Logging.AddSimpleConsole(options =>
 {
-    eventArgs.Cancel = true; // Ctrl+C no mata el proceso: cancela la importación de forma ordenada.
-    cancellation.Cancel();
-};
+    options.SingleLine = true;
+    options.TimestampFormat = "HH:mm:ss ";
+});
+
+// Logs a stderr y reporte a stdout: el reporte se puede redirigir a un archivo sin mezclarse con el log.
+builder.Services.Configure<ConsoleLoggerOptions>(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
+
+builder.Services.AddHelpDeskImporter();
+
+using IHost host = builder.Build();
 
 try
 {
-    ImportResult[] results = await new TicketImporter().ImportAllAsync(csvFiles, cancellation.Token);
-    List<Ticket> tickets = [.. results.SelectMany(result => result.Imported)];
-
-    TimeProvider clock = arguments.CreateClock();
-    var report = new TicketReport(tickets, new StandardSlaPolicy(clock));
-
-    ConsoleReportWriter.WriteImportSummary(results);
-    ConsoleReportWriter.WriteReport(report, team, clock.GetUtcNow());
-    return 0;
+    // Arrancar el host valida la configuración (ValidateOnStart) y conecta Ctrl+C con ApplicationStopping.
+    await host.StartAsync();
 }
-catch (OperationCanceledException)
+catch (OptionsValidationException exception)
 {
-    Console.Error.WriteLine("Importación cancelada.");
-    return 2;
+    ILogger logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("HelpDesk.Importer");
+    logger.LogError("Configuración inválida: {Failures}", string.Join(" ", exception.Failures));
+    return ExitCodes.InvalidConfiguration;
 }
+
+IHostApplicationLifetime lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+int exitCode = await host.Services.GetRequiredService<ImportApp>().RunAsync(lifetime.ApplicationStopping);
+
+await host.StopAsync();
+return exitCode;

@@ -7,6 +7,8 @@ public sealed class TicketReport(IReadOnlyCollection<Ticket> tickets, ISlaPolicy
 {
     private IEnumerable<Ticket> OpenTickets => tickets.Where(ticket => !ticket.IsClosed);
 
+    public int TotalTickets => tickets.Count;
+
     public IReadOnlyList<(SlaState State, int Count)> CountBySlaState() =>
         tickets.CountBy(slaPolicy.Evaluate)
                .OrderBy(entry => entry.Key)
