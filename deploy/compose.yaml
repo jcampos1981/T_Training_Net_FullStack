@@ -1,0 +1,76 @@
+# Bases de datos locales para HelpDesk: SQL Server, PostgreSQL y Redis.
+#
+# Uso (desde la raíz del repo):
+#   docker compose -f deploy/compose.yaml up -d      # levanta todo en segundo plano
+#   docker compose -f deploy/compose.yaml ps         # estado y salud de cada servicio
+#   docker compose -f deploy/compose.yaml logs -f sqlserver
+#   docker compose -f deploy/compose.yaml stop       # detiene (los datos se conservan)
+#   docker compose -f deploy/compose.yaml down -v    # elimina contenedores Y datos
+#
+# Las contraseñas se leen de deploy/.env (ignorado por git). Plantilla: deploy/.env.example
+
+name: helpdesk
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Falta MSSQL_SA_PASSWORD en deploy/.env}
+      # SQL Server toma toda la RAM que puede; lo limitamos para dejar aire al resto.
+      MSSQL_MEMORY_LIMIT_MB: "4096"
+    ports:
+      # Solo accesible desde esta máquina, no desde la red. Se publica en IPv4 e IPv6
+      # porque Windows resuelve "localhost" primero como ::1.
+      # Desde SSMS/sqlcmd conéctate a "127.0.0.1,1433" (con coma): con el cliente de
+      # SQL Server de Windows, "localhost" y el nombre del equipo no llegan al contenedor.
+      - "127.0.0.1:1433:1433"
+      - "[::1]:1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" -b -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      # Margen para el primer arranque: los datos de Docker están en un HDD (H:).
+      start_period: 90s
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-helpdesk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-helpdesk}
+    ports:
+      # 5433 en Windows: el 5432 ya lo usa el PostgreSQL 13 instalado localmente.
+      - "127.0.0.1:5433:5432"
+      - "[::1]:5433:5432"
+    volumes:
+      # Desde PostgreSQL 18 la imagen guarda los datos bajo /var/lib/postgresql/<versión>.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+      - "[::1]:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  sqlserver-data:
+  postgres-data:
+  redis-data:
