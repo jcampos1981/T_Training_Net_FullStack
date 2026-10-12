@@ -1,11 +1,12 @@
 <Project>
+  <!-- Central Package Management: las versiones de NuGet de toda la solución se definen solo aquí.
+       En cada .csproj el PackageReference va sin versión. -->
   <PropertyGroup>
-    <!-- Enable central package management, https://learn.microsoft.com/en-us/nuget/consume-packages/Central-Package-Management -->
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-  </ItemGroup>
-  <ItemGroup>
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.18.0" />
   </ItemGroup>
 </Project>

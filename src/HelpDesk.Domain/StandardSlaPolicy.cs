@@ -1,4 +1,4 @@
-namespace HelpDesk.Importer.Domain;
+namespace HelpDesk.Domain;
 
 public sealed class StandardSlaPolicy(SlaOptions options, TimeProvider clock) : ISlaPolicy
 {

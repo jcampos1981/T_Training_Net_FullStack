@@ -1,4 +1,4 @@
-using HelpDesk.Importer.Domain;
+using HelpDesk.Domain;
 using Microsoft.Extensions.Options;
 
 namespace HelpDesk.Importer.Reports;

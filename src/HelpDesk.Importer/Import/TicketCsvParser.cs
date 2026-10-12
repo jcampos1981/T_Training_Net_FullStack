@@ -1,5 +1,5 @@
 using System.Globalization;
-using HelpDesk.Importer.Domain;
+using HelpDesk.Domain;
 
 namespace HelpDesk.Importer.Import;
 

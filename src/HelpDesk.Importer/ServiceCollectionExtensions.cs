@@ -1,5 +1,5 @@
 using HelpDesk.Importer.Common;
-using HelpDesk.Importer.Domain;
+using HelpDesk.Domain;
 using HelpDesk.Importer.Import;
 using HelpDesk.Importer.Reports;
 using Microsoft.Extensions.DependencyInjection;

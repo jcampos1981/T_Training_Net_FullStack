@@ -1,4 +1,6 @@
-namespace HelpDesk.Importer.Domain;
+using HelpDesk.Domain;
+
+namespace HelpDesk.Importer.Reports;
 
 public static class DisplayNameExtensions
 {

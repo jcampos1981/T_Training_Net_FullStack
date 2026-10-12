@@ -1,4 +1,4 @@
-namespace HelpDesk.Importer.Domain;
+namespace HelpDesk.Domain;
 
 public interface ISlaPolicy
 {

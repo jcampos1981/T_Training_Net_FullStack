@@ -1,4 +1,4 @@
-namespace HelpDesk.Importer.Domain;
+namespace HelpDesk.Domain;
 
 public readonly record struct TicketId(int Value)
 {
