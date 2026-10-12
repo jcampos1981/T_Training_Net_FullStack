@@ -1,0 +1,10 @@
+Id;Titulo;Prioridad;Estado;Creado;Asignado
+2001;Error 500 al guardar factura;Critical;InProgress;2026-10-11T12:00:00Z;luis
+2002;Reporte de ventas tarda 5 minutos;High;Open;2026-10-11T11:30:00Z;marta
+2003;Agregar campo RFC al cliente;Medium;Open;2026-10-11T07:00:00Z;sofia
+2004;Exportar a Excel falla con acentos;Medium;Open;2026-10-09T18:00:00Z;luis
+2005;Usuario bloqueado en el ERP;High;Resolved;2026-10-10T08:00:00Z;marta
+2006;Error 500 al guardar factura;Critical;Open;2026-10-11T15:00:00Z;
+2007;Actualizar certificado SSL;High;Open;2026-10-11T04:00:00Z;pedro
+2008;Permisos para módulo de nómina;Low;Open;2026-10-10T12:00:00Z;sofia
+2009;Fila incompleta;High

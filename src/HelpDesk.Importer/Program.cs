@@ -1,57 +1,51 @@
 using System.Text;
+using HelpDesk.Importer.Common;
 using HelpDesk.Importer.Domain;
 using HelpDesk.Importer.Import;
+using HelpDesk.Importer.Reports;
 
 Console.OutputEncoding = Encoding.UTF8;
 
-TimeProvider clock = TimeProvider.System;
-ISlaPolicy slaPolicy = new StandardSlaPolicy(clock);
-DateTimeOffset now = clock.GetUtcNow();
+string[] team = ["ana", "luis", "marta", "pedro", "sofia", "jorge"];
+string defaultFolder = Path.Combine(AppContext.BaseDirectory, "samples");
 
-// Fechas relativas a "ahora" para que el ejemplo muestre todos los estados de SLA.
-string sampleCsv = $"""
-    Id;Titulo;Prioridad;Estado;Creado;Asignado
-    1;No puedo iniciar sesión;Critical;Open;{now.AddHours(-5):O};ana
-    2;Impresora sin tóner;Low;Open;{now.AddHours(-60):O}
-    3;Error 500 al guardar factura;High;InProgress;{now.AddHours(-2):O};luis
-    4;Solicitud de cuenta nueva;Medium;Resolved;{now.AddDays(-3):O};ana
-    5;Prioridad que no existe;Urgente;Open;{now:O}
-    6;Fila incompleta;High
-    """;
-
-List<Ticket> imported = [];
-List<ParseResult.Failure> rejected = [];
-
-foreach (var (line, lineNumber) in DataLines(sampleCsv))
+if (ImporterArguments.Parse(args, defaultFolder) is not { } arguments)
 {
-    switch (TicketCsvParser.Parse(line, lineNumber))
-    {
-        case ParseResult.Success(var ticket):
-            imported.Add(ticket);
-            break;
-        case ParseResult.Failure failure:
-            rejected.Add(failure);
-            break;
-    }
+    Console.Error.WriteLine(ImporterArguments.Usage);
+    return 1;
 }
 
-Console.WriteLine($"Importados: {imported.Count} | Rechazados: {rejected.Count}");
-Console.WriteLine();
+string[] csvFiles = Directory.Exists(arguments.Folder)
+    ? [.. Directory.EnumerateFiles(arguments.Folder, "*.csv").Order()]
+    : [];
 
-foreach (Ticket ticket in imported)
+if (csvFiles.Length == 0)
 {
-    SlaState sla = slaPolicy.Evaluate(ticket);
-    Console.WriteLine($"{ticket.Id}  {ticket.Priority.DisplayName,-8} {sla.DisplayName,-10} {ticket.Title}");
+    Console.Error.WriteLine($"No hay archivos .csv en '{arguments.Folder}'.");
+    return 1;
 }
 
-Console.WriteLine();
-
-foreach (var (lineNumber, reason) in rejected)
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, eventArgs) =>
 {
-    Console.WriteLine($"Línea {lineNumber}: {reason}");
-}
+    eventArgs.Cancel = true; // Ctrl+C no mata el proceso: cancela la importación de forma ordenada.
+    cancellation.Cancel();
+};
 
-static IEnumerable<(string Line, int LineNumber)> DataLines(string csv) =>
-    csv.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-       .Select((line, index) => (line, index + 1))
-       .Skip(1); // encabezado
+try
+{
+    ImportResult[] results = await new TicketImporter().ImportAllAsync(csvFiles, cancellation.Token);
+    List<Ticket> tickets = [.. results.SelectMany(result => result.Imported)];
+
+    TimeProvider clock = arguments.CreateClock();
+    var report = new TicketReport(tickets, new StandardSlaPolicy(clock));
+
+    ConsoleReportWriter.WriteImportSummary(results);
+    ConsoleReportWriter.WriteReport(report, team, clock.GetUtcNow());
+    return 0;
+}
+catch (OperationCanceledException)
+{
+    Console.Error.WriteLine("Importación cancelada.");
+    return 2;
+}

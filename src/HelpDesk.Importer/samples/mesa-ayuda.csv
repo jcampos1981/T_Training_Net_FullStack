@@ -1,0 +1,12 @@
+Id;Titulo;Prioridad;Estado;Creado;Asignado
+1001;No puedo iniciar sesión;High;Open;2026-10-11T12:30:00Z;ana
+1002;Impresora del piso 2 sin tóner;Low;Open;2026-10-08T20:00:00Z;
+1003;Correo no sincroniza en el celular;Medium;InProgress;2026-10-10T10:00:00Z;luis
+1004;Solicitud de cuenta nueva;Medium;Resolved;2026-10-09T15:00:00Z;ana
+1005;Pantalla azul al encender;Critical;Open;2026-10-11T16:30:00Z;marta
+1006;Teclado con teclas pegadas;Low;Closed;2026-10-05T09:00:00Z;pedro
+1007;No puedo iniciar sesión;High;Open;2026-10-11T08:00:00Z;
+1008;Instalar Office;Medium;Open;2026-10-10T22:00:00Z;sofia
+1009;Cambio de contraseña;Low;Resolved;2026-10-11T09:00:00Z;ana
+1010;Mouse inalámbrico no responde;Low;Open;2026-10-11T11:00:00Z;pedro
+1011;Fila con fecha mala;High;Open;ayer;luis

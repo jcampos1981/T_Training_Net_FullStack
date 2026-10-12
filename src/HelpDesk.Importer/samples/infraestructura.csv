@@ -1,0 +1,9 @@
+Id;Titulo;Prioridad;Estado;Creado;Asignado
+3001;Servidor de archivos lento;High;InProgress;2026-10-11T13:00:00Z;pedro
+3002;VPN se desconecta;High;Open;2026-10-11T09:30:00Z;marta
+3003;Respaldo nocturno falló;Critical;Open;2026-10-11T14:30:00Z;pedro
+3004;Wifi de la sala de juntas;Medium;Open;2026-10-11T02:00:00Z;
+3005;Renovar licencias de antivirus;Low;Open;2026-10-07T12:00:00Z;sofia
+3006;Cableado de oficina nueva;Medium;Closed;2026-10-06T10:00:00Z;pedro
+3007;Disco del servidor al 90%;High;Open;2026-10-11T08:30:00Z;luis
+3008;Prioridad inexistente;Urgente;Open;2026-10-11T10:00:00Z;ana
