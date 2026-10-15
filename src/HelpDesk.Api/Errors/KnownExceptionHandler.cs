@@ -1,27 +1,33 @@
 using HelpDesk.Domain;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace HelpDesk.Api.Errors;
 
 // Traduce las excepciones "esperadas" a respuestas ProblemDetails (RFC 9457).
 // Las demás no se tocan: el manejador por defecto responde 500 sin revelar detalles internos.
-public sealed class KnownExceptionHandler(IProblemDetailsService problemDetailsService) : IExceptionHandler
+public sealed class KnownExceptionHandler(
+    IProblemDetailsService problemDetailsService,
+    IOptions<ApiErrorOptions> options) : IExceptionHandler
 {
+    private const string GenericBadRequestDetail = "La petición no tiene el formato o los datos esperados.";
+
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext,
         Exception exception,
         CancellationToken cancellationToken)
     {
-        (int Status, string Title)? mapping = exception switch
+        (int Status, string Title, string Detail)? mapping = exception switch
         {
-            DomainRuleException => (StatusCodes.Status409Conflict, "Regla de negocio incumplida"),
-            BadHttpRequestException badRequest => (badRequest.StatusCode, "Solicitud inválida"),
-            ArgumentException => (StatusCodes.Status400BadRequest, "Datos inválidos"),
+            // Los mensajes de reglas de negocio están escritos para el usuario: se muestran siempre.
+            DomainRuleException => (StatusCodes.Status409Conflict, "Regla de negocio incumplida", exception.Message),
+            BadHttpRequestException badRequest => (badRequest.StatusCode, "Solicitud inválida", TechnicalOrGenericDetail(exception)),
+            ArgumentException => (StatusCodes.Status400BadRequest, "Datos inválidos", TechnicalOrGenericDetail(exception)),
             _ => null
         };
 
-        if (mapping is not (var status, var title))
+        if (mapping is not (var status, var title, var detail))
         {
             return false;
         }
@@ -32,13 +38,13 @@ public sealed class KnownExceptionHandler(IProblemDetailsService problemDetailsS
         {
             HttpContext = httpContext,
             Exception = exception,
-            ProblemDetails = new ProblemDetails
-            {
-                Status = status,
-                Title = title,
-                // Para JSON mal formado el detalle útil viene en la excepción interna (JsonException).
-                Detail = exception.InnerException?.Message ?? exception.Message
-            }
+            ProblemDetails = new ProblemDetails { Status = status, Title = title, Detail = detail }
         });
     }
+
+    // Para JSON mal formado, el mensaje útil viene en la excepción interna (JsonException).
+    private string TechnicalOrGenericDetail(Exception exception) =>
+        options.Value.ExposeTechnicalDetails
+            ? exception.InnerException?.Message ?? exception.Message
+            : GenericBadRequestDetail;
 }

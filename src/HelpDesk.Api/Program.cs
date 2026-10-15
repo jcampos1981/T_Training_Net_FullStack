@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using HelpDesk.Api.Errors;
 using HelpDesk.Api.Features.Tickets;
@@ -10,13 +11,16 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();                             // errores con formato estándar RFC 9457
 builder.Services.AddExceptionHandler<KnownExceptionHandler>();    // excepciones conocidas → 400 / 409
+builder.Services.AddOptions<ApiErrorOptions>().BindConfiguration(ApiErrorOptions.SectionName);
+// Por defecto solo Development lanza excepción ante parámetros inválidos; así ambos ambientes pasan
+// por KnownExceptionHandler y el formato del error es el mismo (solo cambia el nivel de detalle).
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 builder.Services.AddValidation();                                 // valida [Required], [StringLength]... (.NET 10)
-builder.Services.ConfigureHttpJsonOptions(options =>
-{
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()); // "High" en vez de 2
-    options.SerializerOptions.RespectRequiredConstructorParameters = true;   // falta "priority" → 400
-    options.SerializerOptions.RespectNullableAnnotations = true;             // "title": null → 400
-});
+
+// Minimal APIs y Controllers tienen configuraciones JSON separadas: las dos usan la misma función.
+builder.Services.ConfigureHttpJsonOptions(options => ConfigureJson(options.SerializerOptions));
+builder.Services.AddControllers().AddJsonOptions(options => ConfigureJson(options.JsonSerializerOptions));
+
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddTicketsFeature();
 
@@ -33,6 +37,14 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference(); // interfaz para explorar y probar la API en /scalar
 }
 
-app.MapTicketsFeature();
+app.MapTicketsFeature(); // Minimal APIs
+app.MapControllers();    // Controllers (AgentsController)
 
 app.Run();
+
+static void ConfigureJson(JsonSerializerOptions options)
+{
+    options.Converters.Add(new JsonStringEnumConverter()); // "High" en vez de 2
+    options.RespectRequiredConstructorParameters = true;   // falta "priority" → 400
+    options.RespectNullableAnnotations = true;             // "title": null → 400
+}
