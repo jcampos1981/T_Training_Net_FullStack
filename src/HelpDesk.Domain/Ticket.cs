@@ -21,4 +21,15 @@ public sealed record Ticket
     public string? AssignedTo { get; init; }
 
     public bool IsClosed => Status is TicketStatus.Resolved or TicketStatus.Closed;
+
+    public Ticket Update(string title, TicketPriority priority, TicketStatus status, string? assignedTo)
+    {
+        if (Status is TicketStatus.Closed)
+        {
+            throw new DomainRuleException($"El ticket {Id} está cerrado y no se puede modificar.");
+        }
+
+        // Inmutable: devuelve una copia con los cambios; el setter de Title vuelve a validar.
+        return this with { Title = title, Priority = priority, Status = status, AssignedTo = assignedTo };
+    }
 }
