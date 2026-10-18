@@ -1,8 +1,9 @@
 using HelpDesk.Domain;
 
-namespace HelpDesk.Api.Features.Tickets;
+namespace HelpDesk.Api.Data;
 
-// Datos de arranque mientras no hay base de datos (llega en la Fase 3).
+// Tickets de ejemplo para Development. Los Ids de aquí son provisionales:
+// DevelopmentSeeder los reemplaza por valores de la SEQUENCE al insertarlos.
 public static class TicketSeed
 {
     public static IEnumerable<Ticket> Create(DateTimeOffset now) =>

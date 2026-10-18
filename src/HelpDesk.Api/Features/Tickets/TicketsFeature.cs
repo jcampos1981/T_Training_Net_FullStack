@@ -8,8 +8,8 @@ public static class TicketsFeature
 {
     public static IServiceCollection AddTicketsFeature(this IServiceCollection services)
     {
-        services.AddSingleton<ITicketRepository>(provider =>
-            new InMemoryTicketRepository(TicketSeed.Create(provider.GetRequiredService<TimeProvider>().GetUtcNow())));
+        // Scoped: un repositorio por petición HTTP, igual que el DbContext que usa por dentro.
+        services.AddScoped<ITicketRepository, EfTicketRepository>();
 
         return services;
     }

@@ -483,3 +483,6 @@ $RECYCLE.BIN/
 
 # Plan personal de aprendizaje: solo local, no se publica
 /readme.md
+
+# Resúmenes de estudio: solo locales, no se publican
+/docs/resumen-*.md

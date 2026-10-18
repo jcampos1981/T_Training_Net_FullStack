@@ -1,8 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using HelpDesk.Api.Data;
 using HelpDesk.Api.Errors;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Middleware;
+using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -22,9 +24,30 @@ builder.Services.ConfigureHttpJsonOptions(options => ConfigureJson(options.Seria
 builder.Services.AddControllers().AddJsonOptions(options => ConfigureJson(options.JsonSerializerOptions));
 
 builder.Services.AddSingleton(TimeProvider.System);
+
+// En Development la cadena viene de User Secrets; en otros ambientes, de variables de entorno.
+string connectionString = builder.Configuration.GetConnectionString("HelpDesk")
+    ?? throw new InvalidOperationException(
+        "Falta ConnectionStrings:HelpDesk. En desarrollo: dotnet user-secrets set \"ConnectionStrings:HelpDesk\" \"...\"");
+
+builder.Services.AddDbContext<HelpDeskDbContext>(options =>
+{
+    options.UseSqlServer(connectionString);
+
+    if (builder.Environment.IsDevelopment())
+    {
+        options.EnableSensitiveDataLogging(); // el log de SQL muestra los valores de los parámetros
+    }
+});
+
 builder.Services.AddTicketsFeature();
 
 WebApplication app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    await app.Services.SeedDevelopmentDataAsync(); // tickets de ejemplo si la tabla está vacía
+}
 
 // ---- Pipeline HTTP: cada middleware envuelve a los que vienen después, así que el orden importa ----
 app.UseMiddleware<RequestTimingMiddleware>(); // 1º: mide todo y ve el código de estado final
