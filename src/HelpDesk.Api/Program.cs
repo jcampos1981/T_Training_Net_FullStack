@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using HelpDesk.Api.Data;
 using HelpDesk.Api.Errors;
+using HelpDesk.Api.Features.Agents;
 using HelpDesk.Api.Features.Comments;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Middleware;
@@ -31,9 +32,11 @@ string connectionString = builder.Configuration.GetConnectionString("HelpDesk")
     ?? throw new InvalidOperationException(
         "Falta ConnectionStrings:HelpDesk. En desarrollo: dotnet user-secrets set \"ConnectionStrings:HelpDesk\" \"...\"");
 
-builder.Services.AddDbContext<HelpDeskDbContext>(options =>
+builder.Services.AddSingleton<AuditInterceptor>();
+builder.Services.AddDbContext<HelpDeskDbContext>((provider, options) =>
 {
     options.UseSqlServer(connectionString);
+    options.AddInterceptors(provider.GetRequiredService<AuditInterceptor>()); // UpdatedAt automático
 
     if (builder.Environment.IsDevelopment())
     {
@@ -43,6 +46,7 @@ builder.Services.AddDbContext<HelpDeskDbContext>(options =>
 
 builder.Services.AddTicketsFeature();
 builder.Services.AddCommentsFeature();
+builder.Services.AddAgentsFeature();
 
 WebApplication app = builder.Build();
 

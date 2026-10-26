@@ -16,7 +16,12 @@ public interface ITicketRepository
 
     Task AddAsync(Ticket ticket, CancellationToken cancellationToken);
 
-    Task UpdateAsync(Ticket ticket, CancellationToken cancellationToken);
+    // original: el ticket tal como se leyó · changed: con los cambios · expectedVersion: la versión que vio el cliente.
+    // Devuelve el ticket guardado, con su nueva Version. Si otro guardó antes, lanza DbUpdateConcurrencyException.
+    Task<Ticket> UpdateAsync(Ticket original, Ticket changed, ulong expectedVersion, CancellationToken cancellationToken);
+
+    // Cambio masivo: un solo UPDATE en la base, sin cargar los tickets. Devuelve cuántos cambiaron.
+    Task<int> ReassignOpenTicketsAsync(string fromAgent, string toAgent, DateTimeOffset now, CancellationToken cancellationToken);
 
     Task<bool> DeleteAsync(TicketId id, CancellationToken cancellationToken);
 }

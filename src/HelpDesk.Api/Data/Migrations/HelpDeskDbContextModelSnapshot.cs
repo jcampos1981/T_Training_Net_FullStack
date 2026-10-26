@@ -51,6 +51,15 @@ namespace HelpDesk.Api.Data.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
 
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AssignedTo");

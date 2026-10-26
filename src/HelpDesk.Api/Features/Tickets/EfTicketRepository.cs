@@ -1,6 +1,7 @@
 using HelpDesk.Api.Data;
 using HelpDesk.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace HelpDesk.Api.Features.Tickets;
 
@@ -51,11 +52,41 @@ public sealed class EfTicketRepository(HelpDeskDbContext db) : ITicketRepository
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task UpdateAsync(Ticket ticket, CancellationToken cancellationToken)
+    public async Task<Ticket> UpdateAsync(
+        Ticket original,
+        Ticket changed,
+        ulong expectedVersion,
+        CancellationToken cancellationToken)
     {
-        db.Tickets.Update(ticket);
+        // 1. Se adjunta el ticket tal como se leyó (estado "sin cambios") y se le copian los valores nuevos:
+        //    EF compara uno contra otro y el UPDATE incluye SOLO las columnas que de verdad cambiaron.
+        EntityEntry<Ticket> entry = db.Tickets.Attach(original);
+        entry.CurrentValues.SetValues(changed);
+
+        // 2. Concurrencia optimista: el UPDATE lleva "WHERE Version = <la que vio el cliente>".
+        //    Si alguien guardó antes, no coincide ninguna fila y EF lanza DbUpdateConcurrencyException.
+        entry.Property(ticket => ticket.Version).OriginalValue = expectedVersion;
+
         await db.SaveChangesAsync(cancellationToken);
+
+        // EF escribió en la entidad la nueva Version que generó la base.
+        return entry.Entity;
     }
+
+    public Task<int> ReassignOpenTicketsAsync(
+        string fromAgent,
+        string toAgent,
+        DateTimeOffset now,
+        CancellationToken cancellationToken) =>
+        db.Tickets
+            .Where(ticket => ticket.AssignedTo == fromAgent
+                && (ticket.Status == TicketStatus.Open || ticket.Status == TicketStatus.InProgress))
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(ticket => ticket.AssignedTo, toAgent)
+                    // ExecuteUpdate no pasa por SaveChanges: el interceptor de auditoría no se entera.
+                    .SetProperty(ticket => EF.Property<DateTimeOffset?>(ticket, AuditInterceptor.UpdatedAt), now),
+                cancellationToken);
 
     // ExecuteDeleteAsync: un DELETE directo en la base, sin cargar el ticket antes.
     public async Task<bool> DeleteAsync(TicketId id, CancellationToken cancellationToken) =>

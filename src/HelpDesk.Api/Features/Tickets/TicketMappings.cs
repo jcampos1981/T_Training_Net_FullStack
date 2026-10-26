@@ -1,3 +1,4 @@
+using System.Globalization;
 using HelpDesk.Domain;
 
 namespace HelpDesk.Api.Features.Tickets;
@@ -14,6 +15,7 @@ public static class TicketMappings
             ticket.Priority,
             ticket.Status,
             ticket.CreatedAt,
-            ticket.AssignedTo);
+            ticket.AssignedTo,
+            ticket.Version.ToString(CultureInfo.InvariantCulture));
     }
 }

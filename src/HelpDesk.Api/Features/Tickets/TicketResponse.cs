@@ -10,4 +10,6 @@ public sealed record TicketResponse(
     TicketPriority Priority,
     TicketStatus Status,
     DateTimeOffset CreatedAt,
-    string? AssignedTo);
+    string? AssignedTo,
+    // Texto y no número: JavaScript pierde precisión con enteros de más de 2^53.
+    string Version);

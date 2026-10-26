@@ -33,6 +33,26 @@ public sealed class AgentsController(ITicketRepository repository) : ControllerB
             : Ok(tickets.Select(ticket => ticket.ToResponse()).ToList());
     }
 
+    // [FromServices]: este servicio solo lo usa esta acción, así que se pide aquí y no en el constructor.
+    [HttpPost("{name}/reassign")]
+    [EndpointSummary("Reasigna los tickets abiertos de un agente a otro, en una sola transacción.")]
+    public async Task<ActionResult<ReassignTicketsResponse>> Reassign(
+        string name,
+        ReassignTicketsRequest request,
+        [FromServices] ReassignTicketsHandler handler,
+        CancellationToken cancellationToken)
+    {
+        string toAgent = request.To.Trim();
+
+        if (string.Equals(name, toAgent, StringComparison.OrdinalIgnoreCase))
+        {
+            ModelState.AddModelError(nameof(request.To), "El agente destino debe ser distinto del de origen.");
+            return ValidationProblem(ModelState);
+        }
+
+        return Ok(await handler.HandleAsync(name, toAgent, cancellationToken));
+    }
+
     private static List<AgentSummaryResponse> Summarize(IEnumerable<Ticket> tickets) =>
         tickets.Where(ticket => ticket.AssignedTo is not null)
                .GroupBy(ticket => ticket.AssignedTo!, StringComparer.OrdinalIgnoreCase)

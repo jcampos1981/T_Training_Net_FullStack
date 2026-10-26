@@ -115,11 +115,13 @@ public static class TicketsFeature
             return TypedResults.NotFound();
         }
 
-        // Si el ticket está cerrado, Update lanza DomainRuleException y el manejador global responde 409.
-        Ticket updated = current.Update(request.Title, request.Priority, request.Status, request.AssignedTo);
-        await repository.UpdateAsync(updated, cancellationToken);
+        // Dos posibles 409, ambos traducidos por el manejador global de errores:
+        // - el ticket está cerrado (regla de negocio, DomainRuleException)
+        // - otro usuario lo guardó primero (concurrencia, DbUpdateConcurrencyException)
+        Ticket changed = current.Update(request.Title, request.Priority, request.Status, request.AssignedTo);
+        Ticket saved = await repository.UpdateAsync(current, changed, request.ExpectedVersion(), cancellationToken);
 
-        return TypedResults.Ok(updated.ToResponse());
+        return TypedResults.Ok(saved.ToResponse());
     }
 
     private static async Task<Results<NoContent, NotFound>> DeleteTicket(

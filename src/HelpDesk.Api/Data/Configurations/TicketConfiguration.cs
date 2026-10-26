@@ -24,6 +24,14 @@ public sealed class TicketConfiguration : IEntityTypeConfiguration<Ticket>
 
         builder.Property(ticket => ticket.AssignedTo).HasMaxLength(50);
 
+        // rowversion de SQL Server: 8 bytes que la base cambia sola en cada INSERT/UPDATE.
+        // En C# se ve como ulong; EF lo usa en el WHERE de cada UPDATE para detectar ediciones simultáneas.
+        builder.Property(ticket => ticket.Version).IsRowVersion().HasConversion<byte[]>();
+
+        // Auditoría: propiedad "sombra". Existe en la tabla pero no en la clase Ticket;
+        // la llena AuditInterceptor, así el dominio no carga con detalles de infraestructura.
+        builder.Property<DateTimeOffset?>(AuditInterceptor.UpdatedAt);
+
         // Índices para los filtros de GET /api/tickets (en la Fase 4 veremos si de verdad se usan).
         builder.HasIndex(ticket => new { ticket.Status, ticket.Priority });
         builder.HasIndex(ticket => ticket.AssignedTo);
