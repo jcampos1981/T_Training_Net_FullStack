@@ -20,6 +20,18 @@ public sealed class TicketIdTests
     }
 
     [Fact]
+    public void ComparisonOperators_FollowTheNumericValue()
+    {
+        var lower = new TicketId(9);
+        var higher = new TicketId(10);
+
+        Assert.True(lower < higher);
+        Assert.True(higher > lower);
+        Assert.True(lower <= new TicketId(9));
+        Assert.False(lower >= higher);
+    }
+
+    [Fact]
     public void Equality_IsByValue()
     {
         Assert.Equal(new TicketId(7), new TicketId(7));

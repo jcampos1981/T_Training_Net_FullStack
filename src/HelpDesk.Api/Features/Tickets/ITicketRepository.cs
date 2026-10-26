@@ -6,7 +6,8 @@ namespace HelpDesk.Api.Features.Tickets;
 // real con EF Core (Fase 3), que sí hará I/O contra la base de datos.
 public interface ITicketRepository
 {
-    Task<IReadOnlyList<Ticket>> ListAsync(TicketFilter filter, CancellationToken cancellationToken);
+    // Página por keyset: hasta "take" tickets con Id mayor que "after" (null = desde el principio), ordenados por Id.
+    Task<IReadOnlyList<Ticket>> ListAsync(TicketFilter filter, TicketId? after, int take, CancellationToken cancellationToken);
 
     Task<Ticket?> FindAsync(TicketId id, CancellationToken cancellationToken);
 

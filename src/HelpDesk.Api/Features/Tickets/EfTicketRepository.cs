@@ -8,7 +8,11 @@ namespace HelpDesk.Api.Features.Tickets;
 // Misma interfaz que el repositorio en memoria: los endpoints no se enteran del cambio.
 public sealed class EfTicketRepository(HelpDeskDbContext db) : ITicketRepository
 {
-    public async Task<IReadOnlyList<Ticket>> ListAsync(TicketFilter filter, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Ticket>> ListAsync(
+        TicketFilter filter,
+        TicketId? after,
+        int take,
+        CancellationToken cancellationToken)
     {
         // IQueryable: cada Where se suma a la consulta y todo se traduce a UN solo SELECT con su WHERE.
         IQueryable<Ticket> query = db.Tickets.AsNoTracking();
@@ -28,7 +32,17 @@ public sealed class EfTicketRepository(HelpDeskDbContext db) : ITicketRepository
             query = query.Where(ticket => ticket.AssignedTo == agent);
         }
 
-        return await query.OrderBy(ticket => ticket.Id).ToListAsync(cancellationToken);
+        // Keyset: "WHERE Id > @after ORDER BY Id" + TOP. Con un índice cuyo orden incluya Id,
+        // SQL Server salta directo al punto de partida y se detiene al juntar "take" filas.
+        if (after is { } afterId)
+        {
+            query = query.Where(ticket => ticket.Id > afterId);
+        }
+
+        return await query
+            .OrderBy(ticket => ticket.Id)
+            .Take(take)
+            .ToListAsync(cancellationToken);
     }
 
     // AsNoTracking: solo se lee. Además, como Ticket es inmutable, la versión editada es otra

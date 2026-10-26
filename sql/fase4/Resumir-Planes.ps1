@@ -29,8 +29,9 @@ function Write-Operator([System.Xml.XmlElement]$relOp, [int]$depth) {
     $object = $relOp.SelectSingleNode('./*/p:Object', $nsManager)
     $target = if ($object) { ' [' + (($object.Table, $object.Index | Where-Object { $_ }) -join '.' -replace '[\[\]]', '') + ']' } else { '' }
 
+    # Con 0 ejecuciones (típico de Compute Scalar) el operador se evaluó dentro de otro: no hay cifra real que comparar.
     $ratio = [math]::Max($estimated, 1) / [math]::Max($actualRows, 1)
-    $warning = if ($ratio -gt 10 -or $ratio -lt 0.1) { '   <-- estimación muy lejos de la realidad' } else { '' }
+    $warning = if ($executions -gt 0 -and ($ratio -gt 10 -or $ratio -lt 0.1)) { '   <-- estimación muy lejos de la realidad' } else { '' }
 
     '{0}{1}{2}  | estimadas {3:N0} | reales {4:N0} | ejecuciones {5:N0}{6}' -f `
         ('    ' * $depth), $relOp.PhysicalOp, $target, $estimated, $actualRows, $executions, $warning

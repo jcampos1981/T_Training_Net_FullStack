@@ -4,7 +4,7 @@
    Son copia del SQL que genera EF Core (o Dapper) y llegan igual que desde la app:
    parametrizadas con sp_executesql, que es lo que determina cómo se cachea y reutiliza el plan.
 
-   Uso: sqlcmd -S 127.0.0.1,1433 -U sa -P <clave> -d HelpDesk -C -f 65001 -i sql\fase4\02-linea-base.sql -o salida.txt
+   Uso: sqlcmd -S 127.0.0.1,1433 -U sa -P <clave> -d HelpDesk -C -I -f 65001 -i sql\fase4\02-linea-base.sql -o salida.txt
    En SSMS: activa "Include Actual Execution Plan" (Ctrl+M) para ver el plan gráfico de cada una.
    ===================================================================================== */
 SET NOCOUNT ON;

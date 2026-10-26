@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using HelpDesk.Api.Paging;
 using HelpDesk.Domain;
 using Microsoft.AspNetCore.Http.HttpResults;
 
@@ -22,7 +23,8 @@ public static class TicketsFeature
 
         tickets.MapGet("/", ListTickets)
             .WithName(nameof(ListTickets))
-            .WithSummary("Lista tickets, con filtros opcionales por estado, prioridad y agente.");
+            .WithSummary("Lista tickets por páginas (keyset: ?after=&pageSize=), con filtros opcionales por estado, prioridad y agente.")
+            .ProducesValidationProblem();
 
         tickets.MapGet("/{id:int:min(1)}", GetTicket)
             .WithName(nameof(GetTicket))
@@ -30,7 +32,7 @@ public static class TicketsFeature
 
         tickets.MapGet("/activity", ListActivity)
             .WithName(nameof(ListActivity))
-            .WithSummary("Tickets abiertos con su número de comentarios y los más recientes.")
+            .WithSummary("Tickets abiertos, por páginas, con su número de comentarios y los más recientes.")
             .ProducesValidationProblem();
 
         tickets.MapPost("/", CreateTicket)
@@ -51,22 +53,29 @@ public static class TicketsFeature
         return app;
     }
 
-    private static async Task<Ok<IReadOnlyList<TicketActivityResponse>>> ListActivity(
+    private static async Task<Ok<CursorPage<TicketActivityResponse>>> ListActivity(
+        [AsParameters] PageRequest page,
         TicketActivityQuery query,
         CancellationToken cancellationToken,
         [Range(1, 10)] int latestComments = 3)
     {
-        return TypedResults.Ok(await query.ListOpenAsync(latestComments, cancellationToken));
+        return TypedResults.Ok(await query.ListOpenAsync(page, latestComments, cancellationToken));
     }
 
-    private static async Task<Ok<TicketResponse[]>> ListTickets(
+    // Antes devolvía TODOS los tickets que cumplían el filtro (300 mil para pedro). Ahora, una página.
+    private static async Task<Ok<CursorPage<TicketResponse>>> ListTickets(
         [AsParameters] TicketFilter filter,
+        [AsParameters] PageRequest page,
         ITicketRepository repository,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<Ticket> tickets = await repository.ListAsync(filter, cancellationToken);
-        return TypedResults.Ok(tickets.Select(ticket => ticket.ToResponse()).ToArray());
+        IReadOnlyList<Ticket> tickets = await repository.ListAsync(filter, AfterTicket(page), page.Take(), cancellationToken);
+
+        return TypedResults.Ok(CursorPage.Create(tickets, page, ticket => ticket.ToResponse(), ticket => ticket.Id.Value));
     }
+
+    // after=0 significa "desde el principio": no hay TicketId 0.
+    internal static TicketId? AfterTicket(PageRequest page) => page.After > 0 ? new TicketId(page.After) : null;
 
     private static async Task<Results<Ok<TicketResponse>, NotFound>> GetTicket(
         int id,

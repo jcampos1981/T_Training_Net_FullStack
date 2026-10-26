@@ -9,7 +9,9 @@
    - Por lotes de 100,000 filas: cada lote es una transacción corta y el log no crece sin control.
 
    Uso (desde la raíz del repo):
-     sqlcmd -S 127.0.0.1,1433 -U sa -P <clave> -d HelpDesk -C -f 65001 -i sql\fase4\01-generar-datos.sql
+     sqlcmd -S 127.0.0.1,1433 -U sa -P <clave> -d HelpDesk -C -I -f 65001 -i sql\fase4\01-generar-datos.sql
+   -I (QUOTED_IDENTIFIER ON) es obligatorio: la tabla Tickets tiene un índice filtrado, y SQL Server
+   rechaza INSERT/UPDATE en ella si la sesión no tiene esa opción activada (sqlcmd la trae apagada).
    ===================================================================================== */
 SET NOCOUNT ON;
 SET XACT_ABORT ON;

@@ -32,8 +32,21 @@ public sealed class TicketConfiguration : IEntityTypeConfiguration<Ticket>
         // la llena AuditInterceptor, así el dominio no carga con detalles de infraestructura.
         builder.Property<DateTimeOffset?>(AuditInterceptor.UpdatedAt);
 
-        // Índices para los filtros de GET /api/tickets (en la Fase 4 veremos si de verdad se usan).
+        // Índices para los filtros de GET /api/tickets. Su clave real es (columnas, Id): todo índice no agrupado
+        // lleva la clave del clustered al final, así que para un mismo Status+Priority o AssignedTo las filas
+        // ya vienen ordenadas por Id. Eso es justo lo que necesita la paginación keyset (WHERE Id > @after ORDER BY Id).
         builder.HasIndex(ticket => new { ticket.Status, ticket.Priority });
-        builder.HasIndex(ticket => ticket.AssignedTo);
+
+        // INCLUDE (Status): GET /api/agents agrupa por agente contando abiertos. Sin Status aquí, SQL Server cruzaba
+        // dos índices con un Hash Match de 1 M de filas (320 MB de memoria). Ampliar el índice existente es mejor
+        // que crear otro: cada índice extra cuesta espacio y hace más lentos los INSERT/UPDATE.
+        builder.HasIndex(ticket => ticket.AssignedTo).IncludeProperties(ticket => ticket.Status);
+
+        // Índice FILTRADO: solo los tickets abiertos (~5 %), con las columnas del dashboard incluidas (covering).
+        // Ojo: el optimizador solo lo usa si la consulta trae el MISMO filtro como literal; con un parámetro
+        // (Status = @status) no puede garantizar en tiempo de compilación que las filas estén dentro del índice.
+        builder.HasIndex(ticket => ticket.AssignedTo, "IX_Tickets_Open_AssignedTo")
+            .HasFilter("[Status] IN (N'Open', N'InProgress')")
+            .IncludeProperties(ticket => new { ticket.Status, ticket.Priority, ticket.CreatedAt });
     }
 }

@@ -6,6 +6,7 @@ public static class AgentsFeature
     public static IServiceCollection AddAgentsFeature(this IServiceCollection services)
     {
         services.AddScoped<ReassignTicketsHandler>();
+        services.AddScoped<AgentQueries>();
         return services;
     }
 }

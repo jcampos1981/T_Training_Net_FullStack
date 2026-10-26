@@ -64,7 +64,14 @@ namespace HelpDesk.Api.Data.Migrations
 
                     b.HasIndex("AssignedTo");
 
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("AssignedTo"), new[] { "Status" });
+
                     b.HasIndex("Status", "Priority");
+
+                    b.HasIndex(new[] { "AssignedTo" }, "IX_Tickets_Open_AssignedTo")
+                        .HasFilter("[Status] IN (N'Open', N'InProgress')");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "AssignedTo" }, "IX_Tickets_Open_AssignedTo"), new[] { "Status", "Priority", "CreatedAt" });
 
                     b.ToTable("Tickets", (string)null);
                 });
