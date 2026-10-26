@@ -17,7 +17,9 @@ Registro de consultas lentas: cómo se midieron, qué mostraba el plan, qué se 
 | Opciones de sesión | `sqlcmd -I` (`QUOTED_IDENTIFIER ON`), igual que la app. **Sin `-I` se ignoran los índices filtrados** (ver caso 2) |
 | Paralelismo | Casos 1 a 7: valores de fábrica (`cost threshold for parallelism` 5, `MAXDOP` 0 = 12 hilos). Desde el caso 8: **50 y 8** |
 | Aislamiento | **RCSI desde el primer día**: EF Core lo activa al crear la base (`IF SERVERPROPERTY('EngineEdition') <> 5 ... SET READ_COMMITTED_SNAPSHOT ON`, en `Microsoft.EntityFrameworkCore.SqlServer`). Desde el caso 11: ADR y *optimized locking*, con la migración `EnableOptimizedLocking` |
-| Herramientas | First Responder Kit **20260708**, instalado en `master` ([`fase4/11-first-responder-kit.sql`](fase4/11-first-responder-kit.sql)) |
+| Herramientas | First Responder Kit **20260708**, instalado en `master` ([`fase4/11-first-responder-kit.sql`](fase4/11-first-responder-kit.sql)) · BenchmarkDotNet 0.15.8 ([`benchmarks/`](../benchmarks/)) |
+| App | Desde el caso 15: aviso de consultas lentas (`SlowQueries:ThresholdMilliseconds`, 500 ms por defecto). Desde el caso 16: pool de `DbContext` |
+| PostgreSQL | 18.6 en Docker, base `tuning` con los mismos datos ([`fase4/postgres/`](fase4/postgres/)). `pg_stat_statements` y `track_io_timing` activados en `deploy/compose.yaml` |
 | Query Store | Encendido desde el caso 6 (`QUERY_CAPTURE_MODE = ALL`). Los arreglos de los casos 6 y 7 viven ahí, no en el código: [`fase4/06-query-store.sql`](fase4/06-query-store.sql) los documenta y los vuelve a aplicar |
 
 ---
@@ -362,7 +364,111 @@ Una vez apareció `SEQUENCE_GENERATION` (2.8 s) al crear un ticket: la secuencia
 
 **Lección.** Las herramientas encuentran rápido, pero **no deciden**: de los tres hallazgos sobre índices, uno era falso, otro se rechaza y el tercero es intencional. Cada sugerencia se evalúa contra lo que la app de verdad hace.
 
-**Pendiente para el Bloque 5 (desde la aplicación).** La reasignación lee los 15 mil tickets completos solo para crear sus comentarios, e inserta esos comentarios en lotes de EF (unos 7 s de los 11.7). Mientras tanto, los tickets de pedro siguen bloqueados.
+**Pendiente para el Bloque 5 (desde la aplicación).** La reasignación lee los 15 mil tickets completos solo para crear sus comentarios, e inserta esos comentarios en lotes de EF (unos 7 s de los 11.7). Mientras tanto, los tickets de pedro siguen bloqueados. *→ Caso 14.*
+
+---
+
+Los casos 14 a 16 miran **desde la aplicación**; el 17 y el 18 repiten lo aprendido en **PostgreSQL**.
+
+### Caso 14 · La reasignación: de 362 sentencias a 2
+
+**Problema** (el pendiente del caso 13). El handler leía los 15,133 tickets completos, los convertía en objetos del dominio solo para usar `ticket.CreateComment(...)` y guardaba los comentarios con EF, que los manda en lotes.
+
+**Cambio.** Dos sentencias masivas dentro de la misma transacción:
+1. `INSERT INTO TicketComments ... SELECT [t].[Id], ... FROM Tickets WHERE <agente y abiertos>` (en `ICommentRepository`). EF Core no tiene `INSERT ... SELECT` en LINQ, así que es SQL a mano con `ExecuteSqlAsync`, que convierte cada `{valor}` en un parámetro.
+2. El mismo `ExecuteUpdate` de antes.
+
+Las dos eligen los tickets con el mismo `WHERE`. Si los números no cuadran, alguien cambió un ticket entre una y otra: se responde 409, como antes. La regla del dominio (un ticket cerrado no admite comentarios) la cumple ese `WHERE`, que solo toma abiertos. Es el mismo criterio que ya tenía el `UPDATE`: las operaciones masivas no pasan por los objetos del dominio.
+
+**Medición.** El tiempo de reloj en esta máquina no sirvió: la misma versión vieja tardó 12.1, 7.8 y 3.9 s en tres corridas (HDD, caché, estadísticas recién recalculadas). Lo confiable es lo que registra Query Store de cada sentencia:
+
+| Paso (por reasignación) | Antes | Después |
+|---|---|---|
+| Leer los tickets | 1 `SELECT` con todas las columnas: 264 ms, 30,941 lecturas, recorre la tabla | — |
+| Crear los comentarios | **361 lotes** de EF: unos 2.9 s, unas 150 mil lecturas | **1** `INSERT ... SELECT`: 1.6 s, 109 mil lecturas |
+| Mover los tickets | `UPDATE`: 2.8 s, 369 mil lecturas | igual |
+| Viajes a la base | 363 | 2 |
+
+Además, los tickets de pedro quedan bloqueados solo mientras corre el `UPDATE`, que ahora es lo último antes del `COMMIT`. Antes también lo estaban durante los lotes de comentarios: un `PUT` sobre uno de ellos esperó entre 7.4 y 11.8 s.
+
+**Lo que queda caro es el `UPDATE`**, unas 24 lecturas por ticket. El plan lo explica: actualiza 15,133 filas en la tabla y luego, en **cada uno de los dos índices cuya clave es `AssignedTo`**, convierte cada cambio en un borrado más una inserción (30,266 operaciones por índice). Es el costo de escritura de tener los dos índices que `sp_BlitzIndex` llamó "duplicados" (caso 13): se pagan en cada reasignación a cambio de lecturas rápidas en el dashboard y en la página por agente.
+
+### Caso 15 · Encontrar las consultas lentas desde la app
+
+**Problema.** El log de EF Core muestra **todas** las consultas, como `Information`. En producción eso se apaga, y entonces no queda nada.
+
+**Cambio.** `SlowQueryInterceptor`, un `DbCommandInterceptor` que registra como **`Warning`**, con el SQL completo, solo las sentencias que pasan el umbral `SlowQueries:ThresholdMilliseconds` (500 ms; se lee en cada consulta, así que se puede cambiar sin reiniciar). El mensaje se escribe con `[LoggerMessage]`, que genera el código del log al compilar. También se agregaron etiquetas `TagWith` a las consultas del repositorio, y un comentario equivalente al SQL a mano: así cada aviso dice de qué parte del código salió.
+
+Con el umbral en 100 ms, de seis llamadas a la API solo avisó `GET /api/agents` (Q5, unos 230 ms), con su etiqueta "Resumen de carga por agente". Durante una reasignación:
+
+| Aviso | Qué enseñó |
+|---|---|
+| `INSERT ... SELECT` (705 ms), con su comentario | La etiqueta funciona también en SQL a mano |
+| `UPDATE` de un ticket (542 ms) | **Una consulta lenta puede ser una consulta bloqueada**: el tiempo incluye lo que esperó (aquí, a que el `INSERT` terminara de revisar la llave foránea) |
+| `UPDATE` masivo (2.6 s), **sin etiqueta** | **`ExecuteUpdate` ignora `TagWith`** (EF Core 10). Se quitó del código para que no prometa algo que no hace |
+
+**Dos comprobaciones:**
+- **Agregar `TagWith` no cambió el `query_id` en Query Store.** Las páginas de tickets siguieron cayendo en las consultas 93 y 96, con su plan forzado y su hint (casos 6 y 7): Query Store guarda la sentencia sin el comentario de adelante.
+- **Dapper no pasa por el interceptor**: usa la conexión de EF, pero crea sus propios comandos. Para cubrir todo hace falta trazar a nivel de conexión (OpenTelemetry, Fase 11).
+
+### Caso 16 · Consultas compiladas y pool de `DbContext` (BenchmarkDotNet)
+
+**Pregunta.** Las dos optimizaciones de EF Core que más se recomiendan, ¿cuánto valen en la consulta más frecuente, `GET /api/tickets/{id}`? Medido con BenchmarkDotNet ([`benchmarks/`](../benchmarks/)) contra la base real, con un `DbContext` por operación, como cada petición HTTP:
+
+| Variante | Tiempo | Memoria por operación |
+|---|---:|---:|
+| LINQ (como estaba) | 872 µs | 77.6 KB |
+| Consulta compilada (`EF.CompileAsyncQuery`) | 822 µs (−6 %) | 71.2 KB |
+| LINQ + pool de `DbContext` | 740 µs (−15 %) | **14.4 KB (−81 %)** |
+| Compilada + pool | 703 µs (−19 %) | 9.1 KB (−88 %) |
+
+**Decisión.** Se adoptó el **pool**: es una línea (`AddDbContextPool`) y cumple sus requisitos (el contexto no guarda estado propio y los interceptores son singleton). **La consulta compilada no**: exige un delegado estático por consulta, no se puede componer con otros filtros, y gana un 6 %. EF ya guarda la traducción del LINQ en su caché; lo que pesaba era construir un `DbContext` nuevo en cada petición. Casi todo el tiempo restante (unos 700 µs) es el viaje a SQL Server.
+
+### Caso 17 · PostgreSQL: los mismos planes con `EXPLAIN (ANALYZE, BUFFERS)`
+
+Los mismos datos (1 M de tickets, 2.5 M de comentarios, la misma distribución) en PostgreSQL 18 ([`fase4/postgres/`](fase4/postgres/)). `BUFFERS` cuenta páginas de 8 KB, como las lecturas lógicas: *shared hit* = en memoria, *read* = del disco. La tabla ocupa **119 MB contra 225 MB en SQL Server**: `nvarchar` guarda 2 bytes por carácter, PostgreSQL usa UTF-8, y RCSI agrega 14 bytes por fila.
+
+| Consulta | PostgreSQL | SQL Server | Comentario |
+|---|---:|---:|---|
+| Q1 (Open + High), página de 51 | 465 páginas | 449 | **El mismo plan**: recorrer la tabla en orden de `id` hasta juntar 51. PostgreSQL estimó bien (1,839 a 2,191 filas, según la muestra de `ANALYZE`) y aun así eligió este plan |
+| Q4 (dashboard) | **300 páginas**, Index Only Scan | 409 | El índice parcial es el filtrado. `Heap Fetches: 0` gracias a `VACUUM`: sin el mapa de visibilidad, igual tendría que ir a la tabla. SQL Server no lo necesita |
+| Etiqueta rara, sin índice | 11,991 páginas, 93 ms | — | Recorre la tabla buscando 51 de 200 |
+| Etiqueta rara, con **GIN** | **202 páginas, 0.9 ms** | — | Índice invertido: de cada etiqueta, a sus tickets |
+| Etiqueta común, con GIN | 13 páginas | — | El planificador **no usa** el GIN: recorrer la tabla encuentra 51 enseguida |
+
+**El parameter sniffing de PostgreSQL** (Q2, página por agente, como sentencia preparada):
+
+| | Plan | pedro | agente sin tickets |
+|---|---|---:|---:|
+| A la medida (las primeras 5 veces) | El mejor para cada valor | 6 páginas | 6 páginas |
+| Genérico (forzado) | El del agente "promedio" (123,721 tickets) | 6 páginas | **19,985 páginas, 211 ms** |
+| **Modo por defecto (`auto`)** | Tras 8 ejecuciones alternando agentes: **0 genéricos, 8 a la medida** | | |
+
+En su modo por defecto, PostgreSQL compara el costo del plan genérico con el de los planes a la medida. Si el genérico parece peor, sigue planificando cada vez (unos 0.1 ms): algo así como poner `OPTION (RECOMPILE)` solo cuando conviene. Forzado, el genérico se comporta igual que `OPTIMIZE FOR UNKNOWN` en el caso 6. Dos detalles más:
+- En un plan genérico, **`LIMIT $2` es un parámetro y PostgreSQL supone el 10 % de las filas**. Es lo que genera EF Core con `Take(n)`.
+- Probé un índice `(assigned_to, id)` creyendo que arreglaría el plan genérico, y no: para el agente "promedio", recorrer la tabla en orden sigue siendo lo más barato. Se quitó del script.
+
+**`pg_stat_statements`** es el equivalente de Query Store: agrupa las consultas normalizadas (las constantes se vuelven `$1`), con llamadas, tiempo y páginas.
+
+### Caso 18 · PostgreSQL: versiones muertas, HOT y `VACUUM`
+
+En PostgreSQL un `UPDATE` no sobrescribe la fila: escribe una versión nueva y deja la vieja "muerta" ([`fase4/postgres/pg-03-vacuum.sql`](fase4/postgres/pg-03-vacuum.sql)). Con la reasignación de pedro (15,040 tickets en estos datos):
+
+| Paso | Resultado |
+|---|---|
+| `UPDATE` + `ROLLBACK` | El `ROLLBACK` tardó **0.4 ms**: no hay nada que deshacer, las versiones nuevas quedan muertas. Es lo que ADR consigue en SQL Server (caso 11) |
+| Después | **15,040 versiones muertas** en la tabla, ocupando lugar hasta que alguien las limpie |
+| `VACUUM` | 0.25 s, 29,968 versiones quitadas de la tabla y de sus 5 índices |
+| ¿Cuándo actúa solo autovacuum? | Con más de **200,050** muertas en esta tabla (50 + 20 % de las filas): 15 mil no lo despiertan |
+
+**HOT (*heap-only tuple*).** Si el `UPDATE` no cambia ninguna columna indexada **y** la versión nueva cabe en la misma página, PostgreSQL no toca los índices. Si no, agrega una entrada nueva en **todos** los índices, aunque sus columnas no hayan cambiado.
+
+| `UPDATE` de `updated_at` (sin índice) en 15,040 filas | HOT | Tiempo | Tamaño de la tabla |
+|---|---:|---:|---:|
+| Páginas llenas (`fillfactor` 100, como queda tras la carga) | **77** | 237 a 456 ms | 119 MB |
+| `fillfactor` 90 (10 % libre en cada página) | **15,038** | 124 ms | 133 MB |
+
+**La comparación de fondo.** SQL Server y PostgreSQL resuelven "leer sin bloquear" de forma parecida: guardan versiones de las filas (RCSI, ADR / MVCC). La diferencia está en quién limpia. En SQL Server, el version store de tempdb o el de ADR se limpian solos. En PostgreSQL las versiones viejas viven en la misma tabla, y `VACUUM` (o autovacuum) es parte del mantenimiento: si se atrasa, la tabla y sus índices crecen.
 
 ---
 
@@ -381,3 +487,8 @@ Una vez apareció `SEQUENCE_GENERATION` (2.8 s) al crear un ticket: la secuencia
 | Parámetros de EF Core en Query Store | Una variable capturada por una lambda puede llegar como `@_8__locals1_fromAgent` en vez de `@fromAgent` | Buscar por el resto del texto, no por el nombre del parámetro |
 | `INSERT ... EXEC sp_BlitzIndex` | Falla: el procedimiento ya usa `INSERT ... EXEC` por dentro, y no se pueden anidar | Ejecutarlo directo |
 | `sp_BlitzCache` después de un `RECONFIGURE` | Casi no ve consultas: el caché de planes se vació | La historia está en Query Store |
+| `Invoke-WebRequest -Body $json` en PowerShell 5.1 con acentos | HTTP 400: el texto no viaja como UTF-8 y el JSON llega roto | Mandar bytes: `-Body ([Text.Encoding]::UTF8.GetBytes($json))` |
+| Medir con el reloj en un disco HDD | La misma versión tardó 3.9, 7.8 y 12.1 s | Comparar lo que mide el servidor (Query Store: duración y lecturas por sentencia) |
+| `TagWith` en `ExecuteUpdate` / `ExecuteDelete` (EF Core 10) | El comentario no llega al SQL | Identificar la sentencia por su texto |
+| Sentencias preparadas en PostgreSQL con `LIMIT $n` | El plan genérico supone el 10 % de las filas | Saberlo al leer el plan; el modo `auto` suele evitarlo |
+| `ANALYZE` de PostgreSQL | Las estimaciones cambian entre corridas: usa una muestra (30 mil filas por defecto) | Subir `default_statistics_target` en las columnas que lo necesiten |

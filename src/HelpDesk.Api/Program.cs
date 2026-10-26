@@ -34,12 +34,22 @@ string connectionString = builder.Configuration.GetConnectionString("HelpDesk")
         "Falta ConnectionStrings:HelpDesk. En desarrollo: dotnet user-secrets set \"ConnectionStrings:HelpDesk\" \"...\"");
 
 builder.Services.AddSingleton<AuditInterceptor>();
-builder.Services.AddDbContext<HelpDeskDbContext>((provider, options) =>
+builder.Services.AddSingleton<SlowQueryInterceptor>();
+builder.Services.AddOptions<SlowQueryOptions>()
+    .BindConfiguration(SlowQueryOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart(); // un umbral inválido detiene el arranque, en vez de fallar en la primera consulta
+// Pool: cada petición recibe un DbContext ya construido y lo devuelve al terminar (EF lo limpia).
+// En el benchmark: 15 % menos de tiempo y 81 % menos de memoria por consulta (diario de tuning, caso 16).
+// Requisito: el contexto no guarda estado propio, y lo que recibe aquí (los interceptores) es singleton.
+builder.Services.AddDbContextPool<HelpDeskDbContext>((provider, options) =>
 {
     // Reintenta los errores transitorios (víctima de deadlock 1205, corte de conexión, failover en la nube):
     // hasta 6 veces, con esperas crecientes. Las transacciones propias van dentro de CreateExecutionStrategy().
     options.UseSqlServer(connectionString, sqlServer => sqlServer.EnableRetryOnFailure());
-    options.AddInterceptors(provider.GetRequiredService<AuditInterceptor>()); // UpdatedAt automático
+    options.AddInterceptors(
+        provider.GetRequiredService<AuditInterceptor>(),      // UpdatedAt automático
+        provider.GetRequiredService<SlowQueryInterceptor>()); // Warning con el SQL de las consultas lentas
 
     if (builder.Environment.IsDevelopment())
     {

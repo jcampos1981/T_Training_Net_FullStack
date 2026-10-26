@@ -15,7 +15,7 @@ public sealed class EfTicketRepository(HelpDeskDbContext db) : ITicketRepository
         CancellationToken cancellationToken)
     {
         // IQueryable: cada Where se suma a la consulta y todo se traduce a UN solo SELECT con su WHERE.
-        IQueryable<Ticket> query = db.Tickets.AsNoTracking();
+        IQueryable<Ticket> query = db.Tickets.AsNoTracking().TagWith("Página de tickets (keyset)");
 
         if (filter.Status is { } status)
         {
@@ -48,7 +48,7 @@ public sealed class EfTicketRepository(HelpDeskDbContext db) : ITicketRepository
     // AsNoTracking: solo se lee. Además, como Ticket es inmutable, la versión editada es otra
     // instancia; si la original quedara "rastreada", EF no permitiría adjuntar la nueva con el mismo Id.
     public Task<Ticket?> FindAsync(TicketId id, CancellationToken cancellationToken) =>
-        db.Tickets.AsNoTracking().FirstOrDefaultAsync(ticket => ticket.Id == id, cancellationToken);
+        db.Tickets.AsNoTracking().TagWith("Ticket por Id").FirstOrDefaultAsync(ticket => ticket.Id == id, cancellationToken);
 
     public async Task<TicketId> NextIdAsync(CancellationToken cancellationToken)
     {
@@ -92,6 +92,7 @@ public sealed class EfTicketRepository(HelpDeskDbContext db) : ITicketRepository
         string toAgent,
         DateTimeOffset now,
         CancellationToken cancellationToken) =>
+        // Sin TagWith: ExecuteUpdate lo ignora (EF Core 10), el comentario no llega al SQL.
         db.Tickets
             .Where(ticket => ticket.AssignedTo == fromAgent
                 && (ticket.Status == TicketStatus.Open || ticket.Status == TicketStatus.InProgress))

@@ -4,6 +4,9 @@
     <Project Path="src/HelpDesk.Domain/HelpDesk.Domain.csproj" />
     <Project Path="src/HelpDesk.Importer/HelpDesk.Importer.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/HelpDesk.Benchmarks/HelpDesk.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/HelpDesk.Domain.Tests/HelpDesk.Domain.Tests.csproj" />
   </Folder>

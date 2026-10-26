@@ -39,6 +39,9 @@ services:
 
   postgres:
     image: postgres:18-alpine
+    # pg_stat_statements (estadísticas de cada consulta, como Query Store) solo se carga al arrancar el servidor.
+    # track_io_timing: EXPLAIN (ANALYZE, BUFFERS) muestra también cuánto se tardó en leer del disco.
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.track=all", "-c", "track_io_timing=on"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-helpdesk}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en deploy/.env}
