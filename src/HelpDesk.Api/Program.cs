@@ -36,7 +36,9 @@ string connectionString = builder.Configuration.GetConnectionString("HelpDesk")
 builder.Services.AddSingleton<AuditInterceptor>();
 builder.Services.AddDbContext<HelpDeskDbContext>((provider, options) =>
 {
-    options.UseSqlServer(connectionString);
+    // Reintenta los errores transitorios (víctima de deadlock 1205, corte de conexión, failover en la nube):
+    // hasta 6 veces, con esperas crecientes. Las transacciones propias van dentro de CreateExecutionStrategy().
+    options.UseSqlServer(connectionString, sqlServer => sqlServer.EnableRetryOnFailure());
     options.AddInterceptors(provider.GetRequiredService<AuditInterceptor>()); // UpdatedAt automático
 
     if (builder.Environment.IsDevelopment())

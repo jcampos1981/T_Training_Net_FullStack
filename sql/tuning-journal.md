@@ -16,6 +16,8 @@ Registro de consultas lentas: cómo se midieron, qué mostraba el plan, qué se 
 | Planes | Planes reales con `SET STATISTICS XML ON`, resumidos con [`fase4/Resumir-Planes.ps1`](fase4/Resumir-Planes.ps1) |
 | Opciones de sesión | `sqlcmd -I` (`QUOTED_IDENTIFIER ON`), igual que la app. **Sin `-I` se ignoran los índices filtrados** (ver caso 2) |
 | Paralelismo | Casos 1 a 7: valores de fábrica (`cost threshold for parallelism` 5, `MAXDOP` 0 = 12 hilos). Desde el caso 8: **50 y 8** |
+| Aislamiento | **RCSI desde el primer día**: EF Core lo activa al crear la base (`IF SERVERPROPERTY('EngineEdition') <> 5 ... SET READ_COMMITTED_SNAPSHOT ON`, en `Microsoft.EntityFrameworkCore.SqlServer`). Desde el caso 11: ADR y *optimized locking*, con la migración `EnableOptimizedLocking` |
+| Herramientas | First Responder Kit **20260708**, instalado en `master` ([`fase4/11-first-responder-kit.sql`](fase4/11-first-responder-kit.sql)) |
 | Query Store | Encendido desde el caso 6 (`QUERY_CAPTURE_MODE = ALL`). Los arreglos de los casos 6 y 7 viven ahí, no en el código: [`fase4/06-query-store.sql`](fase4/06-query-store.sql) los documenta y los vuelve a aplicar |
 
 ---
@@ -248,6 +250,122 @@ Con carga, la ventaja desaparece: la respuesta de la versión paralela pasa de 4
 
 ---
 
+Los casos 9 a 13 son de **concurrencia**: qué pasa cuando varias personas usan la app a la vez. Scripts [`fase4/08`](fase4/08-quien-bloquea.sql) a [`fase4/11`](fase4/11-first-responder-kit.sql) y [`fase4/Demo-Bloqueos.ps1`](fase4/Demo-Bloqueos.ps1), que reproduce todo con el SQL de EF Core y termina en `ROLLBACK`.
+
+### Caso 9 · La reasignación masiva bloquea la tabla entera
+
+**Problema.** `POST /api/agents/pedro/reassign` mueve los 15,133 tickets abiertos de pedro a luis, en una transacción: lee los tickets, hace un `UPDATE` masivo y deja un comentario en cada uno. Medido con la app real (y los datos restaurados después):
+
+| Mientras corre la reasignación | Tiempo |
+|---|---:|
+| La reasignación completa | **11.7 s**: 4.7 s el `UPDATE` (344,748 lecturas, unas 23 por ticket) y casi 7 s insertando 15,133 comentarios |
+| `PUT` de un ticket de **luis**, que no tiene nada que ver con pedro | **10.2 s** esperando |
+| `GET /api/dashboard` | 0.6 s: no espera |
+
+**Por qué.** [`fase4/08-quien-bloquea.sql`](fase4/08-quien-bloquea.sql) durante la reasignación:
+- La transacción no tiene 15 mil bloqueos de fila sino **uno solo: `OBJECT X` sobre `Tickets`**. Cuando una sentencia junta unos 5,000 bloqueos en una tabla, SQL Server los cambia por uno de toda la tabla (*lock escalation*) para ahorrar memoria. A partir de ahí, nadie más puede escribir en **ningún** ticket.
+- Las lecturas pasan porque la base tiene RCSI (ver "Entorno"): leen la última versión confirmada, sin pedir bloqueos. Leer los tickets de pedro mientras se reasignan tardó 8 ms y devolvió los 15,133 de antes. Sin RCSI (`WITH (READCOMMITTEDLOCK)`), la misma lectura esperó 7.7 s.
+- Comentar un ticket de luis también espera, aunque escribe en otra tabla: la llave foránea de `TicketComments` tiene que comprobar que el ticket existe, y eso lee `Tickets` con bloqueo.
+- `BloqueadaPor` apunta a la sesión de **adelante en la cola**, no siempre al culpable: los bloqueos se atienden en orden de llegada. Por eso el script sube por la cadena hasta el **bloqueador raíz**.
+
+| Operación, mientras la reasignación lleva su transacción abierta 6 s | Esperó |
+|---|---:|
+| Leer los tickets de pedro (RCSI, como la app) | 8 ms |
+| Lo mismo sin RCSI (`READCOMMITTEDLOCK`) | 7,744 ms |
+| Editar un ticket de luis | 7,846 ms |
+| Comentar un ticket de luis | 7,805 ms |
+| Crear un ticket nuevo | 8,035 ms |
+| Editar un ticket de pedro (de los que se reasignan) | 7,769 ms |
+
+Esperaron casi 8 s y no 6: el `ROLLBACK` del final tardó unos 2 s, porque deshace los 15 mil cambios uno por uno. **Deshacer no es gratis.**
+
+### Caso 10 · Deadlock: dos reasignaciones en sentido contrario
+
+**Problema.** Dos supervisores, al mismo tiempo: pedro → luis y luis → pedro. Con el `UPDATE` exacto de EF Core hubo deadlock en **6 de 8 intentos**. Desde la API, uno recibía **HTTP 500**.
+
+**El grafo** ([`fase4/09-ultimo-deadlock.sql`](fase4/09-ultimo-deadlock.sql), que lo lee de la sesión `system_health`, siempre encendida):
+
+| Recurso | Lo tenía | Lo esperaba |
+|---|---|---|
+| Página de `IX_Tickets_Open_AssignedTo` | pedro → luis (`U`) | luis → pedro (`IX`) |
+| Otra página del mismo índice | luis → pedro (`U`) | pedro → luis (`IX`) |
+
+El punto de encuentro es el índice filtrado del caso 2. Cada `UPDATE` lo recorre para encontrar sus tickets, y como cambia `AssignedTo`, que es la clave del índice, también tiene que mover cada entrada dentro de ese mismo índice: los de pedro van al rango de luis y los de luis al de pedro. Los dos caminos se cruzan. SQL Server rompe el ciclo cancelando a la transacción que menos log escribió (6.9 MB contra 8.0 MB), que es la más barata de deshacer.
+
+Dos detalles para leer grafos:
+- Los bloqueos de página no traen el nombre del índice, pero sí `associatedObjectId`, que `sys.partitions` traduce. Traducir el número de página no sirve: después del deadlock la página puede pertenecer a otra cosa.
+- [`sp_BlitzLock`](fase4/11-first-responder-kit.sql) resumió el día igual: 7 deadlocks, todos en `Tickets`, todos con bloqueos de página, 1 min 40 s de espera en total.
+
+### Caso 11 · *Optimized locking* (SQL Server 2025)
+
+**Cambio.** `ALTER DATABASE ... SET OPTIMIZED_LOCKING = ON`, que necesita ADR (*Accelerated Database Recovery*) encendido antes. Funciona con dos piezas:
+- **TID locking.** Cada fila modificada queda marcada con el número de la transacción. En vez de guardar un bloqueo por fila hasta el `COMMIT`, la transacción guarda **un solo bloqueo `XACT`**, y suelta el de cada fila apenas la modifica. Quien necesite una de esas filas espera a ese `XACT` (`LCK_M_S_XACT_*`). Con tan pocos bloqueos, no hay escalamiento.
+- **LAQ (*lock after qualification*).** Requiere RCSI. El `WHERE` se evalúa sobre la última versión confirmada, sin bloquear, y solo se bloquean las filas que cumplen. Por eso las reasignaciones opuestas ya no chocan: luis → pedro ni siquiera mira los tickets que pedro → luis está moviendo, porque en la versión confirmada todavía son de pedro.
+
+| | Antes | Con *optimized locking* |
+|---|---:|---:|
+| Bloqueos de la reasignación | `OBJECT X` (toda la tabla) | `OBJECT IX` + un `XACT X` |
+| Editar un ticket de luis | 7,846 ms | **0 ms** |
+| Comentar un ticket de luis | 7,805 ms | **4 ms** |
+| Crear un ticket nuevo | 8,035 ms | **112 ms** |
+| Editar un ticket de pedro (de los que se reasignan) | 7,769 ms | 5,336 ms (correcto: esa fila sí cambió) |
+| Lectura con bloqueo (`READCOMMITTEDLOCK`) | 7,744 ms | 5,467 ms (también lee filas de pedro) |
+| Deadlock pedro ⇄ luis | 6 de 8 intentos | **0 de 7** |
+
+Las esperas legítimas también bajaron de unos 7.8 s a unos 5.4 s: con ADR el `ROLLBACK` es instantáneo, porque no deshace fila por fila.
+
+**Va en una migración** (`EnableOptimizedLocking`), igual que EF ya hace con RCSI: es configuración de la base que la app necesita, y si alguien recrea la base tiene que quedar igual. Usa SQL dinámico porque la opción no existe antes de SQL Server 2025, y solo cambia lo que falta, así que aplicarla dos veces no hace nada. Probado: encender y apagar *optimized locking* con otra transacción abierta no necesitó acceso exclusivo a la base. Para ADR no lo probé, porque ya estaba encendido.
+
+⚠️ **Una medición rara.** La primera corrida justo después de encenderlo todavía escaló a `OBJECT X`. No lo pude reproducir: ni con un plan compilado antes de encenderlo, ni apagando y volviendo a encender ADR y *optimized locking*. Todas las corridas siguientes, más de diez entre demos y pruebas sueltas, se comportaron como en la tabla. Queda anotado, y es otra razón para medir siempre más de una vez.
+
+### Caso 12 · La app ante un deadlock: reintentar y responder 409
+
+*Optimized locking* quitó **este** deadlock, pero puede haber otros. La app tiene que saber qué hacer cuando le toca ser la víctima. Prueba con dos reasignaciones opuestas por la API; para provocar el deadlock, se apagó *optimized locking* un momento:
+
+| Código de la app | pedro → luis | luis → pedro |
+|---|---|---|
+| Sin reintentos (antes) | 200 | **500**: error 1205, víctima del deadlock |
+| `EnableRetryOnFailure` | 200 | Reintentada sola; al repetirse encontró los tickets de pedro mezclados con los de luis, el conteo no cuadró y respondió **409** ("alguien más modificó este registro") |
+| Con *optimized locking* (la migración) | 200 | **200**, al mismo tiempo y sin reintentos (9,947 tickets) |
+
+**Cambios en el código:**
+- `UseSqlServer(..., sqlServer => sqlServer.EnableRetryOnFailure())` reintenta los errores transitorios: deadlock 1205, cortes de conexión, *failover*. Hasta 6 veces, con esperas crecientes.
+- Con reintentos activos, EF **no permite** abrir una transacción propia fuera de la estrategia, porque hay que repetir **toda** la transacción, no solo la última sentencia. `ReassignTicketsHandler` ahora corre dentro de `CreateExecutionStrategy().ExecuteAsync(...)`, y cada intento empieza con `ChangeTracker.Clear()`, para no arrastrar los comentarios del intento fallido.
+- El 409 lo da la verificación que el handler ya tenía (lo leído contra lo actualizado). No es un error transitorio, así que no se reintenta.
+
+Tres capas: *optimized locking* evita la causa, el reintento cubre los deadlocks que queden y la verificación protege los datos.
+
+### Caso 13 · Diagnóstico: estadísticas de espera y First Responder Kit
+
+**Estadísticas de espera** ([`fase4/10-esperas.sql`](fase4/10-esperas.sql): dos fotos de `sys.dm_os_wait_stats` con 20 s de diferencia, sin las esperas de fondo). Lo acumulado desde el arranque sirve poco; lo que dice algo es la diferencia mientras pasa el problema:
+
+| Carga durante la medición | Esperas principales | Qué dice |
+|---|---|---|
+| 12 sesiones con Q5 en paralelo (caso 8) | `SOS_SCHEDULER_YIELD` 71 %, `LATCH_EX` 12 %, `CX*` 13 %, **`THREADPOOL` 80 veces (2.3 s)** | CPU saturada y hilos esperando a hilos. `THREADPOOL`: peticiones que esperaron un hilo libre solo para empezar |
+| Reasignación, sin *optimized locking* | `LCK_M_IX` + `LCK_M_IS`: 27.2 s, 5 sesiones | Bloqueos sobre la **tabla** |
+| Reasignación, con *optimized locking* | `LCK_M_S_XACT_READ` + `LCK_M_S_XACT_MODIFY`: 10.2 s, 2 sesiones | Bloqueos sobre la **transacción**, solo de quien toca tickets de pedro |
+
+Una vez apareció `SEQUENCE_GENERATION` (2.8 s) al crear un ticket: la secuencia `TicketIds` guarda 50 valores en memoria, y al agotarlos escribe el nuevo tope en disco (aquí, un HDD). No lo investigué más.
+
+**First Responder Kit** ([`fase4/11-first-responder-kit.sql`](fase4/11-first-responder-kit.sql)):
+
+| Herramienta | Hallazgo | Veredicto |
+|---|---|---|
+| `sp_Blitz` | Sin respaldos ni `CHECKDB`, Agent apagado, sin alertas | Normal en desarrollo; en producción, lo primero que hay que resolver |
+| `sp_Blitz` | *Slow Storage Writes* (más de 100 ms de promedio), *TempDB Only Has 1 Data File*, *Max Memory Set Too High* | Reales: el HDD y la configuración de fábrica del contenedor. `MSSQL_MEMORY_LIMIT_MB` ya limita la memoria a 4 GB; en un servidor normal, fijar `max server memory` es de lo primero |
+| `sp_Blitz` | `cost threshold` 50, `MAXDOP` 8, `QUERY_CAPTURE_MODE = ALL`, RCSI, ADR, `DBCC FREEPROCCACHE` | Son cambios nuestros. Bien que los vea: así se nota cuando alguien tocó algo. En producción, Query Store con `AUTO` |
+| `sp_BlitzIndex` | "Duplicados": `IX_Tickets_AssignedTo` e `IX_Tickets_Open_AssignedTo` | **No lo son**: misma clave, pero uno es filtrado (solo abiertos, el dashboard) y el otro completo (página por agente, `GET /api/agents`). Se quedan los dos |
+| `sp_BlitzIndex` | Índice faltante `(AssignedTo, Status) INCLUDE (Title, Priority, CreatedAt, UpdatedAt, Version)`, impacto 89 % | **Rechazado**: sería una segunda copia de la tabla. Lo pide el `SELECT` de la reasignación (29,285 lecturas, recorre la tabla), que lee los tickets completos aunque solo necesita su Id. El arreglo es leer menos: Bloque 5 |
+| `sp_BlitzIndex` | *Cascading Updates or Deletes* en `TicketComments` | A propósito: borrar un ticket borra sus comentarios |
+| `sp_BlitzCache` | *Long Running With Low CPU* en la lectura con `READCOMMITTEDLOCK` | Una consulta que tarda pero casi no trabaja: está esperando, no calculando |
+| `sp_BlitzLock` | 7 deadlocks, todos en `Tickets`, con bloqueos de página; 2 de la app | Coincide con el caso 10 |
+
+**Lección.** Las herramientas encuentran rápido, pero **no deciden**: de los tres hallazgos sobre índices, uno era falso, otro se rechaza y el tercero es intencional. Cada sugerencia se evalúa contra lo que la app de verdad hace.
+
+**Pendiente para el Bloque 5 (desde la aplicación).** La reasignación lee los 15 mil tickets completos solo para crear sus comentarios, e inserta esos comentarios en lotes de EF (unos 7 s de los 11.7). Mientras tanto, los tickets de pedro siguen bloqueados.
+
+---
+
 ## Trampas de herramientas
 
 | Trampa | Síntoma | Solución |
@@ -257,3 +375,9 @@ Con carga, la ventaja desaparece: la respuesta de la versión paralela pasa de 4
 | `RECONFIGURE` de opciones como `MAXDOP` o `cost threshold` | Vacía el caché de planes de **toda la instancia**, con sus métricas (`sys.dm_exec_query_stats`) | Leer las métricas antes, y en producción cambiarlas en horario tranquilo |
 | `INSERT ... EXEC` para descartar filas | Las lecturas de `sys.dm_exec_query_stats` suman unas 2 por fila, que son las escrituras en la tabla destino | Tomar las lecturas de `STATISTICS IO`, línea por tabla (script 04) |
 | Encender Query Store y medir en seguida | La primera corrida puede no quedar registrada (encenderlo es asíncrono) | Esperar a que `actual_state_desc` sea `READ_WRITE` (script 05) |
+| Métodos de XML (`.value()`, `.nodes()`) desde `sqlcmd` sin `-I` | Error 1934: `QUOTED_IDENTIFIER` incorrecto | `sqlcmd -I`, también para leer grafos de deadlock |
+| El archivo `.xel` de `system_health` | Un deadlock recién ocurrido todavía no aparece | Leer primero el *ring buffer* de la sesión (script 09) |
+| `NOT LIKE '%UPDATE%'` para descartar sentencias en Query Store | También descarta las que tienen la columna `UpdatedAt`, porque la intercalación no distingue mayúsculas | Buscar el texto exacto: `'%UPDATE \[t\]%' ESCAPE '\'` |
+| Parámetros de EF Core en Query Store | Una variable capturada por una lambda puede llegar como `@_8__locals1_fromAgent` en vez de `@fromAgent` | Buscar por el resto del texto, no por el nombre del parámetro |
+| `INSERT ... EXEC sp_BlitzIndex` | Falla: el procedimiento ya usa `INSERT ... EXEC` por dentro, y no se pueden anidar | Ejecutarlo directo |
+| `sp_BlitzCache` después de un `RECONFIGURE` | Casi no ve consultas: el caché de planes se vació | La historia está en Query Store |

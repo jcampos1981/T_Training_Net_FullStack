@@ -15,8 +15,18 @@ public sealed class ReassignTicketsHandler(
 {
     private const string SystemAuthor = "sistema";
 
-    public async Task<ReassignTicketsResponse> HandleAsync(string fromAgent, string toAgent, CancellationToken cancellationToken)
+    public Task<ReassignTicketsResponse> HandleAsync(string fromAgent, string toAgent, CancellationToken cancellationToken)
     {
+        // Con reintentos (EnableRetryOnFailure), una transacción propia tiene que ir dentro de la estrategia:
+        // si SQL Server la elige víctima de un deadlock (error 1205), se repite COMPLETA, desde la lectura.
+        IExecutionStrategy strategy = db.Database.CreateExecutionStrategy();
+        return strategy.ExecuteAsync(attempt => ReassignAsync(fromAgent, toAgent, attempt), cancellationToken);
+    }
+
+    private async Task<ReassignTicketsResponse> ReassignAsync(string fromAgent, string toAgent, CancellationToken cancellationToken)
+    {
+        // Un intento fallido pudo dejar comentarios pendientes en el contexto: cada intento empieza de cero.
+        db.ChangeTracker.Clear();
         DateTimeOffset now = clock.GetUtcNow();
 
         // ExecuteUpdate se ejecuta en el acto (no espera a SaveChanges): sin una transacción explícita,
@@ -32,6 +42,7 @@ public sealed class ReassignTicketsHandler(
 
         // Si otro usuario cambió esos tickets entre la lectura y el UPDATE, los números no cuadran:
         // se lanza la excepción, el "await using" deshace la transacción (rollback) y la API responde 409.
+        // No es un error transitorio, así que la estrategia NO lo reintenta.
         if (reassigned != affected.Count)
         {
             throw new DbUpdateConcurrencyException("Los tickets del agente cambiaron durante la reasignación.");
