@@ -4,6 +4,7 @@ using HelpDesk.Api.Data;
 using HelpDesk.Api.Errors;
 using HelpDesk.Api.Features.Agents;
 using HelpDesk.Api.Features.Comments;
+using HelpDesk.Api.Features.Dashboard;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Middleware;
 using Microsoft.EntityFrameworkCore;
@@ -47,6 +48,7 @@ builder.Services.AddDbContext<HelpDeskDbContext>((provider, options) =>
 builder.Services.AddTicketsFeature();
 builder.Services.AddCommentsFeature();
 builder.Services.AddAgentsFeature();
+builder.Services.AddDashboardFeature();
 
 WebApplication app = builder.Build();
 
@@ -68,6 +70,7 @@ if (app.Environment.IsDevelopment())
 
 app.MapTicketsFeature();  // Minimal APIs
 app.MapCommentsFeature(); // Minimal APIs (recurso anidado de tickets)
+app.MapDashboardFeature(); // Minimal API con Dapper
 app.MapControllers();     // Controllers (AgentsController)
 
 app.Run();
