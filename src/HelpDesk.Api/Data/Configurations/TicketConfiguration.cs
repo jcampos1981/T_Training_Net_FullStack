@@ -12,10 +12,9 @@ public sealed class TicketConfiguration : IEntityTypeConfiguration<Ticket>
         builder.ToTable("Tickets");
         builder.HasKey(ticket => ticket.Id);
 
-        // Value converter: en C# es un TicketId, en la tabla es un int.
-        builder.Property(ticket => ticket.Id)
-            .HasConversion(id => id.Value, value => new TicketId(value))
-            .ValueGeneratedNever();
+        // En C# es un TicketId y en la tabla un int (TicketIdConverter, registrado como convención).
+        // ValueGeneratedNever: el Id llega ya asignado desde la SEQUENCE.
+        builder.Property(ticket => ticket.Id).ValueGeneratedNever();
 
         builder.Property(ticket => ticket.Title).HasMaxLength(120).IsRequired();
 

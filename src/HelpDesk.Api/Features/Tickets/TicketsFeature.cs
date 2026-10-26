@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using HelpDesk.Domain;
 using Microsoft.AspNetCore.Http.HttpResults;
 
@@ -10,6 +11,7 @@ public static class TicketsFeature
     {
         // Scoped: un repositorio por petición HTTP, igual que el DbContext que usa por dentro.
         services.AddScoped<ITicketRepository, EfTicketRepository>();
+        services.AddScoped<TicketActivityQuery>();
 
         return services;
     }
@@ -25,6 +27,11 @@ public static class TicketsFeature
         tickets.MapGet("/{id:int:min(1)}", GetTicket)
             .WithName(nameof(GetTicket))
             .WithSummary("Obtiene un ticket por su Id.");
+
+        tickets.MapGet("/activity", ListActivity)
+            .WithName(nameof(ListActivity))
+            .WithSummary("Tickets abiertos con su número de comentarios y los más recientes.")
+            .ProducesValidationProblem();
 
         tickets.MapPost("/", CreateTicket)
             .WithName(nameof(CreateTicket))
@@ -42,6 +49,14 @@ public static class TicketsFeature
             .WithSummary("Elimina un ticket.");
 
         return app;
+    }
+
+    private static async Task<Ok<IReadOnlyList<TicketActivityResponse>>> ListActivity(
+        TicketActivityQuery query,
+        CancellationToken cancellationToken,
+        [Range(1, 10)] int latestComments = 3)
+    {
+        return TypedResults.Ok(await query.ListOpenAsync(latestComments, cancellationToken));
     }
 
     private static async Task<Ok<TicketResponse[]>> ListTickets(

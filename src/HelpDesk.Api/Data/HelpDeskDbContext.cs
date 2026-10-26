@@ -11,6 +11,14 @@ public sealed class HelpDeskDbContext(DbContextOptions<HelpDeskDbContext> option
 
     public DbSet<Ticket> Tickets => Set<Ticket>();
 
+    public DbSet<TicketComment> Comments => Set<TicketComment>();
+
+    // Convenciones: reglas que aplican a TODAS las propiedades de un tipo, en cualquier entidad.
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<TicketId>().HaveConversion<TicketIdConverter>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Los Ids de ticket salen de una SEQUENCE: se reservan ANTES de insertar, porque

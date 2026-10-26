@@ -60,6 +60,36 @@ public sealed class TicketTests
     }
 
     [Fact]
+    public void CreateComment_WhenOpen_ReturnsCommentLinkedToTicket()
+    {
+        Ticket ticket = TestTickets.Create();
+
+        TicketComment comment = ticket.CreateComment("  luis ", "Ya revisé el servidor.", TestTickets.Now);
+
+        Assert.Equal(ticket.Id, comment.TicketId);
+        Assert.Equal("luis", comment.Author);
+        Assert.Equal(0, comment.Id); // todavía no se guarda: la base le asignará el Id
+    }
+
+    [Fact]
+    public void CreateComment_WhenClosed_ThrowsDomainRuleException()
+    {
+        Ticket closed = TestTickets.Create(status: TicketStatus.Closed);
+
+        Assert.Throws<DomainRuleException>(() => closed.CreateComment("ana", "¿Sigue fallando?", TestTickets.Now));
+    }
+
+    [Theory]
+    [InlineData("", "Texto válido")]
+    [InlineData("ana", "   ")]
+    public void CreateComment_WithBlankAuthorOrBody_Throws(string author, string body)
+    {
+        Ticket ticket = TestTickets.Create();
+
+        Assert.Throws<ArgumentException>(() => ticket.CreateComment(author, body, TestTickets.Now));
+    }
+
+    [Fact]
     public void Update_WhenResolved_IsAllowed()
     {
         Ticket resolved = TestTickets.Create(status: TicketStatus.Resolved);

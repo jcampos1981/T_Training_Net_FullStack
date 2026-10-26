@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using HelpDesk.Api.Data;
 using HelpDesk.Api.Errors;
+using HelpDesk.Api.Features.Comments;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Middleware;
 using Microsoft.EntityFrameworkCore;
@@ -41,6 +42,7 @@ builder.Services.AddDbContext<HelpDeskDbContext>(options =>
 });
 
 builder.Services.AddTicketsFeature();
+builder.Services.AddCommentsFeature();
 
 WebApplication app = builder.Build();
 
@@ -60,8 +62,9 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference(); // interfaz para explorar y probar la API en /scalar
 }
 
-app.MapTicketsFeature(); // Minimal APIs
-app.MapControllers();    // Controllers (AgentsController)
+app.MapTicketsFeature();  // Minimal APIs
+app.MapCommentsFeature(); // Minimal APIs (recurso anidado de tickets)
+app.MapControllers();     // Controllers (AgentsController)
 
 app.Run();
 
