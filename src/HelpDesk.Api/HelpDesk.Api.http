@@ -1,0 +1,51 @@
+# Pruebas manuales de la API. En Visual Studio 2022: abre este archivo, elige el ambiente "dev" (arriba a la
+# derecha) y usa "Send request" sobre cada petición. La contraseña sale de User Secrets (http-client.env.json),
+# nunca de este archivo.
+#
+# Usuarios de desarrollo (los crea DevelopmentSeeder), todos @helpdesk.local:
+#   pedro, luis, marta, sofia, jorge, carlos, elena, ana → Agent · laura → Supervisor · admin → Admin
+
+### 1. Sin token: 401 (la API está cerrada por defecto)
+GET {{baseUrl}}/api/tickets?pageSize=2
+
+### 2. Login de pedro: devuelve un bearer token de Identity (1 hora) y un refresh token (14 días)
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "pedro@helpdesk.local",
+  "password": "{{password}}"
+}
+
+### 3. Quién soy: nombre, agente (claim helpdesk:agent) y roles
+GET {{baseUrl}}/api/me
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### 4. Los tickets, ahora con el token
+GET {{baseUrl}}/api/tickets?pageSize=2
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### 5. Datos de la cuenta: /manage/... exige usuario (sin el header responde 401)
+GET {{baseUrl}}/api/auth/manage/info
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### 6. Renovar el token sin volver a pedir la contraseña
+POST {{baseUrl}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{login.response.body.$.refreshToken}}"
+}
+
+### 7. Login con cookie, como lo haría un navegador: la respuesta trae Set-Cookie (HttpOnly) en vez de tokens
+POST {{baseUrl}}/api/auth/login?useCookies=true
+Content-Type: application/json
+
+{
+  "email": "laura@helpdesk.local",
+  "password": "{{password}}"
+}
+
+### 8. Con la cookie del paso 7 (el cliente la manda solo): laura, Supervisor
+GET {{baseUrl}}/api/me

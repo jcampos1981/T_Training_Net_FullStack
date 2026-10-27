@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="Dapper" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -18,6 +19,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\HelpDesk.Domain\HelpDesk.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Solo para probar HelpDesk.Api.http desde Visual Studio: no va en la app publicada. -->
+    <Content Update="http-client.env.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
 </Project>

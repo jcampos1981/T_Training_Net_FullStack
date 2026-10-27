@@ -2,18 +2,20 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using HelpDesk.Api.Data;
 using HelpDesk.Api.Errors;
+using HelpDesk.Api.Features.Accounts;
 using HelpDesk.Api.Features.Agents;
 using HelpDesk.Api.Features.Comments;
 using HelpDesk.Api.Features.Dashboard;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Middleware;
+using HelpDesk.Api.OpenApi;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // ---- Servicios (contenedor de DI): igual que en el Generic Host del importador ----
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecuritySchemeTransformer>());
 builder.Services.AddProblemDetails();                             // errores con formato estándar RFC 9457
 builder.Services.AddExceptionHandler<KnownExceptionHandler>();    // excepciones conocidas → 400 / 409
 builder.Services.AddOptions<ApiErrorOptions>().BindConfiguration(ApiErrorOptions.SectionName);
@@ -57,6 +59,7 @@ builder.Services.AddDbContextPool<HelpDeskDbContext>((provider, options) =>
     }
 });
 
+builder.Services.AddAccountsFeature(); // Identity, login y "cerrado por defecto"
 builder.Services.AddTicketsFeature();
 builder.Services.AddCommentsFeature();
 builder.Services.AddAgentsFeature();
@@ -66,20 +69,24 @@ WebApplication app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    await app.Services.SeedDevelopmentDataAsync(); // tickets de ejemplo si la tabla está vacía
+    await app.Services.SeedDevelopmentDataAsync(); // tickets, roles y usuarios de ejemplo si faltan
 }
 
 // ---- Pipeline HTTP: cada middleware envuelve a los que vienen después, así que el orden importa ----
 app.UseMiddleware<RequestTimingMiddleware>(); // 1º: mide todo y ve el código de estado final
 app.UseExceptionHandler();                    // 2º: convierte excepciones en respuestas ProblemDetails
 app.UseStatusCodePages();                     // 3º: da cuerpo ProblemDetails a errores vacíos (404, 405...)
+app.UseAuthentication();                      // 4º: arma el usuario (ClaimsPrincipal) con la cookie o el token
+app.UseAuthorization();                       // 5º: decide si ese usuario puede llegar al endpoint (401 / 403)
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();            // documento OpenAPI en /openapi/v1.json
-    app.MapScalarApiReference(); // interfaz para explorar y probar la API en /scalar
+    // Abiertos a propósito: si no, la política "cerrado por defecto" también los bloquearía.
+    app.MapOpenApi().AllowAnonymous();            // documento OpenAPI en /openapi/v1.json
+    app.MapScalarApiReference().AllowAnonymous(); // interfaz para explorar y probar la API en /scalar
 }
 
+app.MapAccountsFeature(); // Identity: /api/auth/... y /api/me
 app.MapTicketsFeature();  // Minimal APIs
 app.MapCommentsFeature(); // Minimal APIs (recurso anidado de tickets)
 app.MapDashboardFeature(); // Minimal API con Dapper

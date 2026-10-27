@@ -1,6 +1,9 @@
+using System.Security.Claims;
+using HelpDesk.Api.Features.Accounts;
 using HelpDesk.Api.Features.Comments;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Domain;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace HelpDesk.Api.Data;
@@ -9,6 +12,15 @@ namespace HelpDesk.Api.Data;
 // pasan por los repositorios y el dominio (SEQUENCE para tickets, reglas para comentarios).
 public static class DevelopmentSeeder
 {
+    // La contraseña de los usuarios de desarrollo viene de User Secrets, nunca del repositorio:
+    //   dotnet user-secrets set "DevelopmentUsers:Password" "<contraseña>" --project src/HelpDesk.Api
+    public const string PasswordKey = "DevelopmentUsers:Password";
+
+    private const string EmailDomain = "helpdesk.local";
+
+    // Un usuario por cada agente que aparece en Ticket.AssignedTo.
+    private static readonly string[] AgentNames = ["pedro", "luis", "marta", "sofia", "jorge", "carlos", "elena", "ana"];
+
     private static readonly (string Author, string Body)[] SampleComments =
     [
         ("ana", "Le pedí al usuario una captura del error."),
@@ -32,6 +44,76 @@ public static class DevelopmentSeeder
         if (!await db.Comments.AnyAsync(cancellationToken))
         {
             await SeedCommentsAsync(db, provider.GetRequiredService<ICommentRepository>(), now, cancellationToken);
+        }
+
+        await SeedRolesAsync(provider.GetRequiredService<RoleManager<IdentityRole>>());
+
+        string? password = provider.GetRequiredService<IConfiguration>()[PasswordKey];
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            provider.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(DevelopmentSeeder))
+                .LogWarning("Sin usuarios de desarrollo: falta {Key} en User Secrets.", PasswordKey);
+            return;
+        }
+
+        await SeedUsersAsync(provider.GetRequiredService<UserManager<IdentityUser>>(), password);
+    }
+
+    private static async Task SeedRolesAsync(RoleManager<IdentityRole> roles)
+    {
+        foreach (string role in HelpDeskRoles.All)
+        {
+            if (!await roles.RoleExistsAsync(role))
+            {
+                EnsureSucceeded(await roles.CreateAsync(new IdentityRole(role)), $"crear el rol {role}");
+            }
+        }
+    }
+
+    // Los agentes llevan el claim que une su cuenta con Ticket.AssignedTo; el supervisor y el admin, no.
+    private static async Task SeedUsersAsync(UserManager<IdentityUser> users, string password)
+    {
+        foreach (string agent in AgentNames)
+        {
+            await EnsureUserAsync(users, agent, password, HelpDeskRoles.Agent, new Claim(HelpDeskClaimTypes.Agent, agent));
+        }
+
+        await EnsureUserAsync(users, "laura", password, HelpDeskRoles.Supervisor);
+        await EnsureUserAsync(users, "admin", password, HelpDeskRoles.Admin);
+    }
+
+    private static async Task EnsureUserAsync(
+        UserManager<IdentityUser> users,
+        string name,
+        string password,
+        string role,
+        params Claim[] claims)
+    {
+        string email = $"{name}@{EmailDomain}";
+        if (await users.FindByEmailAsync(email) is not null)
+        {
+            return;
+        }
+
+        // Con MapIdentityApi el nombre de usuario ES el email: así se inicia sesión.
+        IdentityUser user = new() { UserName = email, Email = email, EmailConfirmed = true };
+
+        EnsureSucceeded(await users.CreateAsync(user, password), $"crear el usuario {email}");
+        EnsureSucceeded(await users.AddToRoleAsync(user, role), $"asignar el rol {role} a {email}");
+
+        if (claims.Length > 0)
+        {
+            EnsureSucceeded(await users.AddClaimsAsync(user, claims), $"agregar claims a {email}");
+        }
+    }
+
+    // Identity no lanza excepciones: devuelve IdentityResult. Ignorarlo dejaría usuarios a medio crear.
+    private static void EnsureSucceeded(IdentityResult result, string action)
+    {
+        if (!result.Succeeded)
+        {
+            string errors = string.Join(" ", result.Errors.Select(error => error.Description));
+            throw new InvalidOperationException($"No se pudo {action}: {errors}");
         }
     }
 
