@@ -49,3 +49,44 @@ Content-Type: application/json
 
 ### 8. Con la cookie del paso 7 (el cliente la manda solo): laura, Supervisor
 GET {{baseUrl}}/api/me
+
+### ---------- JWT propios (/api/token) ----------
+
+### 9. Login con JWT: access token de 15 minutos + refresh token de un solo uso
+# @name jwt
+POST {{baseUrl}}/api/token
+Content-Type: application/json
+
+{
+  "email": "pedro@helpdesk.local",
+  "password": "{{password}}"
+}
+
+### 10. Quién soy con el JWT ("authenticatedWith": "Bearer"). Pega el accessToken en jwt.io para ver su contenido
+GET {{baseUrl}}/api/me
+Authorization: Bearer {{jwt.response.body.$.accessToken}}
+
+### 11. Renovar: entrega un par nuevo; el refresh token anterior queda usado
+# @name jwtRefresh
+POST {{baseUrl}}/api/token/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{jwt.response.body.$.refreshToken}}"
+}
+
+### 12. El refresh token anterior OTRA VEZ: 401, y se revoca toda la familia (el del paso 11 tampoco sirve ya)
+POST {{baseUrl}}/api/token/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{jwt.response.body.$.refreshToken}}"
+}
+
+### 13. Cerrar sesión: revoca el refresh token. El JWT de acceso sigue sirviendo hasta que vence (no se puede revocar)
+POST {{baseUrl}}/api/token/revoke
+Content-Type: application/json
+
+{
+  "refreshToken": "{{jwtRefresh.response.body.$.refreshToken}}"
+}
