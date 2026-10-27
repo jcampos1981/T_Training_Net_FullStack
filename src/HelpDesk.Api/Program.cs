@@ -15,7 +15,9 @@ using Scalar.AspNetCore;
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // ---- Servicios (contenedor de DI): igual que en el Generic Host del importador ----
-builder.Services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecuritySchemeTransformer>());
+builder.Services.AddOpenApi(options => options
+    .AddDocumentTransformer<BearerSecuritySchemeTransformer>()      // pegar un token a mano
+    .AddDocumentTransformer<KeycloakSecuritySchemeTransformer>());  // iniciar sesión en Keycloak
 builder.Services.AddProblemDetails();                             // errores con formato estándar RFC 9457
 builder.Services.AddExceptionHandler<KnownExceptionHandler>();    // excepciones conocidas → 400 / 409
 builder.Services.AddOptions<ApiErrorOptions>().BindConfiguration(ApiErrorOptions.SectionName);
@@ -83,7 +85,8 @@ if (app.Environment.IsDevelopment())
 {
     // Abiertos a propósito: si no, la política "cerrado por defecto" también los bloquearía.
     app.MapOpenApi().AllowAnonymous();            // documento OpenAPI en /openapi/v1.json
-    app.MapScalarApiReference().AllowAnonymous(); // interfaz para explorar y probar la API en /scalar
+    // Interfaz para explorar y probar la API en /scalar, con login de Keycloak si está configurado.
+    app.MapScalarApiReference((options, context) => options.AddKeycloakLogin(context.RequestServices)).AllowAnonymous();
 }
 
 app.MapAccountsFeature(); // Identity: /api/auth/... y /api/me

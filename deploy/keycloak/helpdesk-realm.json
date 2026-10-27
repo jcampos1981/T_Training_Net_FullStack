@@ -1,0 +1,128 @@
+{
+  "realm": "helpdesk",
+  "displayName": "HelpDesk",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "resetPasswordAllowed": false,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "Agent", "description": "Atiende los tickets que tiene asignados" },
+      { "name": "Supervisor", "description": "Ve todos los tickets y reasigna la carga" },
+      { "name": "Admin", "description": "Administra usuarios" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "helpdesk-api",
+      "name": "HelpDesk API",
+      "description": "La API como audiencia (aud) de los tokens. No inicia sesión ni pide tokens: todos sus flujos están apagados.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "helpdesk-scalar",
+      "name": "Scalar (documentación interactiva de la API)",
+      "description": "Client público: corre en el navegador y no puede guardar un secreto. Authorization Code + PKCE.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:5159/scalar*",
+        "https://localhost:7082/scalar*"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      },
+      "protocolMappers": [
+        {
+          "name": "audiencia helpdesk-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "helpdesk-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "pedro", "email": "pedro@helpdesk.local", "emailVerified": true,
+      "firstName": "Pedro", "lastName": "Agente", "enabled": true,
+      "realmRoles": ["Agent"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "luis", "email": "luis@helpdesk.local", "emailVerified": true,
+      "firstName": "Luis", "lastName": "Agente", "enabled": true,
+      "realmRoles": ["Agent"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "marta", "email": "marta@helpdesk.local", "emailVerified": true,
+      "firstName": "Marta", "lastName": "Agente", "enabled": true,
+      "realmRoles": ["Agent"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "sofia", "email": "sofia@helpdesk.local", "emailVerified": true,
+      "firstName": "Sofía", "lastName": "Agente", "enabled": true,
+      "realmRoles": ["Agent"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "jorge", "email": "jorge@helpdesk.local", "emailVerified": true,
+      "firstName": "Jorge", "lastName": "Agente", "enabled": true,
+      "realmRoles": ["Agent"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "carlos", "email": "carlos@helpdesk.local", "emailVerified": true,
+      "firstName": "Carlos", "lastName": "Agente", "enabled": true,
+      "realmRoles": ["Agent"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "elena", "email": "elena@helpdesk.local", "emailVerified": true,
+      "firstName": "Elena", "lastName": "Agente", "enabled": true,
+      "realmRoles": ["Agent"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "ana", "email": "ana@helpdesk.local", "emailVerified": true,
+      "firstName": "Ana", "lastName": "Agente", "enabled": true,
+      "realmRoles": ["Agent"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "laura", "email": "laura@helpdesk.local", "emailVerified": true,
+      "firstName": "Laura", "lastName": "Supervisora", "enabled": true,
+      "realmRoles": ["Supervisor"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "admin", "email": "admin@helpdesk.local", "emailVerified": true,
+      "firstName": "Admin", "lastName": "HelpDesk", "enabled": true,
+      "realmRoles": ["Admin"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    }
+  ]
+}

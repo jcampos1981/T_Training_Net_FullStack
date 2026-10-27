@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using HelpDesk.Api.Data;
+using HelpDesk.Api.Features.Accounts.Keycloak;
 using HelpDesk.Api.Features.Accounts.Tokens;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -11,12 +12,10 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace HelpDesk.Api.Features.Accounts;
 
-// Cuentas de usuario con ASP.NET Core Identity (registro, login, "quién soy") y JWT propios (/api/token).
+// Cuentas de usuario con ASP.NET Core Identity (registro, login, "quién soy"), JWT propios (/api/token) y
+// tokens de un proveedor externo (Keycloak, OpenID Connect).
 public static class AccountsFeature
 {
-    // No autentica nada: mira la petición y la manda al esquema que corresponde (JWT o Identity).
-    private const string SchemeSelector = "HelpDesk";
-
     public static IServiceCollection AddAccountsFeature(this IServiceCollection services)
     {
         // AddIdentityApiEndpoints = Identity (contraseñas con hash, bloqueo tras intentos fallidos) + dos formas
@@ -82,22 +81,23 @@ public static class AccountsFeature
         services.AddScoped<RefreshTokenStore>();
         services.AddScoped<TokenService>();
 
-        // Conviven dos tipos de credencial: el JWT propio (/api/token) y lo de Identity (cookie o su token).
+        // Conviven varias credenciales: JWT propio (/api/token), JWT de Keycloak y lo de Identity (cookie o su token).
         // Este AddAuthentication va DESPUÉS de AddIdentityApiEndpoints, así que su esquema por defecto manda.
         services.AddAuthentication(options =>
             {
-                options.DefaultScheme = SchemeSelector;
-                options.DefaultChallengeScheme = SchemeSelector;
+                options.DefaultScheme = AuthenticationSchemeSelector.SchemeName;
+                options.DefaultChallengeScheme = AuthenticationSchemeSelector.SchemeName;
             })
-            .AddPolicyScheme(SchemeSelector, "JWT o Identity", options =>
+            .AddPolicyScheme(AuthenticationSchemeSelector.SchemeName, "JWT, Keycloak o Identity", options =>
             {
-                options.ForwardDefaultSelector = SelectScheme;
+                options.ForwardDefaultSelector = AuthenticationSchemeSelector.Select;
                 // Responder "no autenticado" (401) o "prohibido" (403) siempre como JwtBearer: el esquema de la
                 // cookie respondería con un 302 a una página de login que una API no tiene.
                 options.ForwardChallenge = JwtBearerDefaults.AuthenticationScheme;
                 options.ForwardForbid = JwtBearerDefaults.AuthenticationScheme;
             })
-            .AddJwtBearer();
+            .AddJwtBearer()
+            .AddKeycloakBearer();
 
         // Las opciones de JwtBearer salen de JwtOptions (que a su vez sale de la configuración y de User Secrets).
         services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
@@ -119,23 +119,6 @@ public static class AccountsFeature
                     RoleClaimType = ClaimTypes.Role
                 };
             });
-    }
-
-    // Quién valida la credencial de esta petición:
-    // - "Bearer" con un JWT (tres partes en Base64Url separadas por puntos: encabezado.contenido.firma) → JwtBearer.
-    // - "Bearer" con otra cosa (el token de Identity no tiene puntos) → el bearer token de Identity.
-    // - Sin header Authorization → la cookie de Identity (si no hay cookie, el usuario queda anónimo).
-    private static string SelectScheme(HttpContext context)
-    {
-        string? authorization = context.Request.Headers.Authorization;
-        if (authorization is null || !authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-        {
-            return IdentityConstants.ApplicationScheme;
-        }
-
-        return authorization.Count(character => character == '.') == 2
-            ? JwtBearerDefaults.AuthenticationScheme
-            : IdentityConstants.BearerScheme;
     }
 
     // ClaimsPrincipal llega solo: es el usuario que armó el middleware de autenticación con la cookie o el token.

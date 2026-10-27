@@ -17,7 +17,7 @@ internal sealed class BearerSecuritySchemeTransformer : IOpenApiDocumentTransfor
         {
             Type = SecuritySchemeType.Http,
             Scheme = "bearer",
-            Description = "El accessToken que devuelve POST /api/auth/login."
+            Description = "El accessToken de POST /api/token (JWT) o de POST /api/auth/login (Identity)."
         };
 
         document.Security ??= [];

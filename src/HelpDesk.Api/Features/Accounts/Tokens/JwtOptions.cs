@@ -16,7 +16,8 @@ public sealed class JwtOptions
 
     // Clave para firmar con HS256 (HMAC-SHA256), en Base64. Va en User Secrets en desarrollo y en un almacén de
     // secretos en producción, nunca en appsettings. Con HS256 la MISMA clave firma y valida: quien pueda validar
-    // también puede emitir. Si otros servicios tienen que validar, conviene RS256/ES256 (clave pública): Bloque 4.
+    // también puede emitir. Si otros servicios tienen que validar, conviene RS256/ES256 (clave pública), como hace
+    // Keycloak (Features/Accounts/Keycloak).
     [Required]
     public string SigningKey { get; set; } = string.Empty;
 

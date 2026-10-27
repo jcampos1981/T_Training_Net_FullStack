@@ -1,4 +1,4 @@
-# Bases de datos locales para HelpDesk: SQL Server, PostgreSQL y Redis.
+# Servicios locales para HelpDesk: SQL Server, PostgreSQL, Redis y Keycloak.
 #
 # Uso (desde la raíz del repo):
 #   docker compose -f deploy/compose.yaml up -d      # levanta todo en segundo plano
@@ -72,6 +72,36 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # Proveedor de identidad (OpenID Connect). Consola de administración: http://localhost:8080/admin
+  # (usuario admin, contraseña KEYCLOAK_ADMIN_PASSWORD de deploy/.env).
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    # start-dev: HTTP, sin caché distribuida y con una base H2 dentro del contenedor. Solo para desarrollo.
+    # --import-realm: si el realm "helpdesk" no existe, lo crea desde deploy/keycloak/ (el realm es código).
+    # Sin volumen a propósito: "down" + "up" vuelve al realm del archivo. Lo que cambies en la consola se pierde
+    # al recrear el contenedor; si quieres conservarlo, pásalo a helpdesk-realm.json.
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Falta KEYCLOAK_ADMIN_PASSWORD en deploy/.env}
+      # helpdesk-realm.json la usa como ${HELPDESK_DEV_PASSWORD}: la contraseña no queda en el repositorio.
+      HELPDESK_DEV_PASSWORD: ${HELPDESK_DEV_PASSWORD:?Falta HELPDESK_DEV_PASSWORD en deploy/.env}
+      # URL pública fija: es el "iss" de los tokens, y la API lo compara con Keycloak:Authority.
+      KC_HOSTNAME: http://localhost:8080
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "[::1]:8080:8080"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      # La imagen no trae curl: bash abre la conexión al puerto de administración (9000) y pide /health/ready.
+      test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "HTTP/1.1 200" <&3']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
 
 volumes:
   sqlserver-data:

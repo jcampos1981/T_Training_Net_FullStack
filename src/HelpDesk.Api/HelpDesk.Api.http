@@ -118,3 +118,18 @@ Content-Type: application/json
 ###
 GET {{baseUrl}}/api/dashboard
 Authorization: Bearer {{supervisor.response.body.$.accessToken}}
+
+### ---------- OpenID Connect con Keycloak (docker compose -f deploy/compose.yaml up -d keycloak) ----------
+# El login es en la página de Keycloak, no aquí: abre /scalar, elige "Keycloak" en la autenticación y entra con
+# pedro o laura (misma contraseña de desarrollo). Scalar usa Authorization Code + PKCE.
+
+### 18. Discovery document: todo lo que un cliente o una API necesita saber del proveedor (endpoints, llaves, algoritmos)
+GET {{keycloakUrl}}/.well-known/openid-configuration
+
+### 19. Las llaves PÚBLICAS con que Keycloak firma (JWKS). La API valida con ellas; la privada nunca sale de Keycloak
+GET {{keycloakUrl}}/protocol/openid-connect/certs
+
+### 20. Con un access token de Keycloak: cópialo de Scalar (o de las herramientas del navegador) y pégalo aquí
+@keycloakToken = pega-aqui-el-access-token
+GET {{baseUrl}}/api/me
+Authorization: Bearer {{keycloakToken}}
