@@ -36,7 +36,8 @@ public static class AccountsFeature
         // Cerrado por defecto: todo endpoint sin [AllowAnonymous] exige un usuario autenticado. Un endpoint
         // nuevo nace protegido aunque alguien olvide ponerle [Authorize].
         services.AddAuthorizationBuilder()
-            .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+            .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
+            .AddHelpDeskPolicies(); // Staff y Supervision
 
         return services;
     }

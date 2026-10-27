@@ -1,10 +1,14 @@
+using System.Security.Claims;
+using HelpDesk.Api.Features.Accounts;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Domain;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace HelpDesk.Api.Features.Comments;
 
-// Recurso anidado: los comentarios siempre se piden a través de su ticket.
+// Recurso anidado: los comentarios siempre se piden a través de su ticket, y heredan sus permisos:
+// quien puede leer el ticket puede leer sus comentarios; quien puede editarlo, puede comentarlo.
 public static class CommentsFeature
 {
     public static IServiceCollection AddCommentsFeature(this IServiceCollection services)
@@ -16,7 +20,11 @@ public static class CommentsFeature
 
     public static IEndpointRouteBuilder MapCommentsFeature(this IEndpointRouteBuilder app)
     {
-        RouteGroupBuilder comments = app.MapGroup("/api/tickets/{ticketId:int:min(1)}/comments").WithTags("Comments");
+        RouteGroupBuilder comments = app.MapGroup("/api/tickets/{ticketId:int:min(1)}/comments")
+            .WithTags("Comments")
+            .RequireAuthorization(HelpDeskPolicies.Staff)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         comments.MapGet("/", ListComments)
             .WithName(nameof(ListComments))
@@ -28,42 +36,69 @@ public static class CommentsFeature
 
         comments.MapPost("/", AddComment)
             .WithName(nameof(AddComment))
-            .WithSummary("Agrega un comentario. Un ticket cerrado no admite comentarios.")
+            .WithSummary("Agrega un comentario firmado por el usuario actual. Un ticket cerrado no admite comentarios.")
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         return app;
     }
 
-    private static async Task<Results<Ok<IReadOnlyList<CommentResponse>>, NotFound>> ListComments(
+    private static async Task<Results<Ok<IReadOnlyList<CommentResponse>>, NotFound, ForbidHttpResult>> ListComments(
         int ticketId,
+        ClaimsPrincipal user,
+        IAuthorizationService authorization,
+        ITicketRepository tickets,
         CommentQueries queries,
         CancellationToken cancellationToken)
     {
         var id = new TicketId(ticketId);
+        Ticket? ticket = await tickets.FindAsync(id, cancellationToken);
 
-        if (!await queries.TicketExistsAsync(id, cancellationToken))
+        if (ticket is null)
         {
             return TypedResults.NotFound();
+        }
+
+        if (!(await authorization.AuthorizeAsync(user, ticket, TicketOperations.Read)).Succeeded)
+        {
+            return TypedResults.Forbid();
         }
 
         return TypedResults.Ok(await queries.ListForTicketAsync(id, cancellationToken));
     }
 
-    private static async Task<Results<Ok<CommentResponse>, NotFound>> GetComment(
+    private static async Task<Results<Ok<CommentResponse>, NotFound, ForbidHttpResult>> GetComment(
         int ticketId,
         int commentId,
+        ClaimsPrincipal user,
+        IAuthorizationService authorization,
+        ITicketRepository tickets,
         CommentQueries queries,
         CancellationToken cancellationToken)
     {
-        CommentResponse? comment = await queries.FindAsync(new TicketId(ticketId), commentId, cancellationToken);
+        var id = new TicketId(ticketId);
+        Ticket? ticket = await tickets.FindAsync(id, cancellationToken);
+
+        if (ticket is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        if (!(await authorization.AuthorizeAsync(user, ticket, TicketOperations.Read)).Succeeded)
+        {
+            return TypedResults.Forbid();
+        }
+
+        CommentResponse? comment = await queries.FindAsync(id, commentId, cancellationToken);
 
         return comment is null ? TypedResults.NotFound() : TypedResults.Ok(comment);
     }
 
-    private static async Task<Results<CreatedAtRoute<CommentResponse>, NotFound>> AddComment(
+    private static async Task<Results<CreatedAtRoute<CommentResponse>, NotFound, ForbidHttpResult>> AddComment(
         int ticketId,
         AddCommentRequest request,
+        ClaimsPrincipal user,
+        IAuthorizationService authorization,
         ITicketRepository tickets,
         ICommentRepository comments,
         TimeProvider clock,
@@ -76,8 +111,13 @@ public static class CommentsFeature
             return TypedResults.NotFound();
         }
 
+        if (!(await authorization.AuthorizeAsync(user, ticket, TicketOperations.Update)).Succeeded)
+        {
+            return TypedResults.Forbid();
+        }
+
         // Si el ticket está cerrado, CreateComment lanza DomainRuleException → 409.
-        TicketComment comment = ticket.CreateComment(request.Author, request.Body, clock.GetUtcNow());
+        TicketComment comment = ticket.CreateComment(user.AuthorName, request.Body, clock.GetUtcNow());
         TicketComment saved = await comments.AddAsync(comment, cancellationToken);
 
         return TypedResults.CreatedAtRoute(

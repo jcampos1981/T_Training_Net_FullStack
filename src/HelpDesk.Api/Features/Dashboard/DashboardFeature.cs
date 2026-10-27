@@ -1,3 +1,4 @@
+using HelpDesk.Api.Features.Accounts;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace HelpDesk.Api.Features.Dashboard;
@@ -13,6 +14,7 @@ public static class DashboardFeature
     public static IEndpointRouteBuilder MapDashboardFeature(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/dashboard", GetDashboard)
+            .RequireAuthorization(HelpDeskPolicies.Supervision) // la carga de TODO el equipo: solo supervisión
             .WithTags("Dashboard")
             .WithName(nameof(GetDashboard))
             .WithSummary("Indicadores: tickets por estado, carga abierta por agente y comentarios de la última semana.");

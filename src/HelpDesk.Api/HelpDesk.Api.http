@@ -90,3 +90,31 @@ Content-Type: application/json
 {
   "refreshToken": "{{jwtRefresh.response.body.$.refreshToken}}"
 }
+
+### ---------- Autorización (con el JWT de pedro, Agent, del paso 9) ----------
+
+### 14. Sin filtro: solo devuelve tickets de pedro (el filtro se aplica solo)
+GET {{baseUrl}}/api/tickets?pageSize=3
+Authorization: Bearer {{jwt.response.body.$.accessToken}}
+
+### 15. Los tickets de otro agente: 403
+GET {{baseUrl}}/api/tickets?assignedTo=luis
+Authorization: Bearer {{jwt.response.body.$.accessToken}}
+
+### 16. El dashboard es de supervisión: 403 para un agente
+GET {{baseUrl}}/api/dashboard
+Authorization: Bearer {{jwt.response.body.$.accessToken}}
+
+### 17. Laura (Supervisor): el mismo dashboard, 200
+# @name supervisor
+POST {{baseUrl}}/api/token
+Content-Type: application/json
+
+{
+  "email": "laura@helpdesk.local",
+  "password": "{{password}}"
+}
+
+###
+GET {{baseUrl}}/api/dashboard
+Authorization: Bearer {{supervisor.response.body.$.accessToken}}
