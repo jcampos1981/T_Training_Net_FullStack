@@ -9,6 +9,7 @@ using HelpDesk.Api.Features.Dashboard;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Middleware;
 using HelpDesk.Api.OpenApi;
+using HelpDesk.Api.Security;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
@@ -61,6 +62,9 @@ builder.Services.AddDbContextPool<HelpDeskDbContext>((provider, options) =>
     }
 });
 
+builder.Services.AddFrontendCors();          // qué frontends de otro origen pueden leer las respuestas
+builder.Services.AddHelpDeskRateLimiting();  // límite por usuario y, más estricto, para login
+
 builder.Services.AddAccountsFeature(); // Identity, login y "cerrado por defecto"
 builder.Services.AddTicketsFeature();
 builder.Services.AddCommentsFeature();
@@ -78,8 +82,11 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<RequestTimingMiddleware>(); // 1º: mide todo y ve el código de estado final
 app.UseExceptionHandler();                    // 2º: convierte excepciones en respuestas ProblemDetails
 app.UseStatusCodePages();                     // 3º: da cuerpo ProblemDetails a errores vacíos (404, 405...)
-app.UseAuthentication();                      // 4º: arma el usuario (ClaimsPrincipal) con la cookie o el token
-app.UseAuthorization();                       // 5º: decide si ese usuario puede llegar al endpoint (401 / 403)
+app.UseCors();                                // 4º: antes de autenticar, porque el preflight (OPTIONS) no trae token;
+                                              //     y sus headers también llegan en un 401 o un 429
+app.UseAuthentication();                      // 5º: arma el usuario (ClaimsPrincipal) con la cookie o el token
+app.UseRateLimiter();                         // 6º: después de autenticar, para contar por usuario y no solo por IP
+app.UseAuthorization();                       // 7º: decide si ese usuario puede llegar al endpoint (401 / 403)
 
 if (app.Environment.IsDevelopment())
 {

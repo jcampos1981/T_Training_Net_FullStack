@@ -87,6 +87,8 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Falta KEYCLOAK_ADMIN_PASSWORD en deploy/.env}
       # helpdesk-realm.json la usa como ${HELPDESK_DEV_PASSWORD}: la contraseña no queda en el repositorio.
       HELPDESK_DEV_PASSWORD: ${HELPDESK_DEV_PASSWORD:?Falta HELPDESK_DEV_PASSWORD en deploy/.env}
+      # Secreto del client helpdesk-bff; el BFF tiene el mismo en sus User Secrets (Keycloak:ClientSecret).
+      HELPDESK_BFF_CLIENT_SECRET: ${HELPDESK_BFF_CLIENT_SECRET:?Falta HELPDESK_BFF_CLIENT_SECRET en deploy/.env}
       # URL pública fija: es el "iss" de los tokens, y la API lo compara con Keycloak:Authority.
       KC_HOSTNAME: http://localhost:8080
       KC_HEALTH_ENABLED: "true"

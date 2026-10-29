@@ -133,3 +133,28 @@ GET {{keycloakUrl}}/protocol/openid-connect/certs
 @keycloakToken = pega-aqui-el-access-token
 GET {{baseUrl}}/api/me
 Authorization: Bearer {{keycloakToken}}
+
+### ---------- CORS (lo que hace el navegador antes de llamar desde otro origen) ----------
+
+### 21. Preflight desde un frontend en Vite (http://localhost:5173, en Cors:AllowedOrigins): 204 con Allow-Origin
+OPTIONS {{baseUrl}}/api/tickets
+Origin: http://localhost:5173
+Access-Control-Request-Method: GET
+Access-Control-Request-Headers: authorization
+
+### 22. El mismo preflight desde otro origen: 204, pero SIN Access-Control-Allow-Origin: el navegador no deja seguir
+OPTIONS {{baseUrl}}/api/tickets
+Origin: http://evil.example
+Access-Control-Request-Method: GET
+Access-Control-Request-Headers: authorization
+
+### ---------- Rate limiting ----------
+
+### 23. Login con un email que no existe: a partir del intento 11 en un minuto responde 429 con Retry-After
+POST {{baseUrl}}/api/token
+Content-Type: application/json
+
+{
+  "email": "nadie@helpdesk.local",
+  "password": "no-es-la-clave"
+}

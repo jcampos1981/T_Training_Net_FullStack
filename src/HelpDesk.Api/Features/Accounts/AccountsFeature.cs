@@ -2,11 +2,13 @@ using System.Security.Claims;
 using HelpDesk.Api.Data;
 using HelpDesk.Api.Features.Accounts.Keycloak;
 using HelpDesk.Api.Features.Accounts.Tokens;
+using HelpDesk.Api.Security;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -47,6 +49,7 @@ public static class AccountsFeature
         // MapIdentityApi no marca sus endpoints públicos como [AllowAnonymous]: con "cerrado por defecto", hasta
         // /login exigiría estar autenticado y nadie podría entrar. Se marcan aquí todos MENOS /manage/..., que sí
         // necesitan al usuario. (Un [AllowAnonymous] en todo el grupo abriría también /manage.)
+        // Los públicos llevan además el límite de login, el mismo de /api/token: comparten la cuenta por IP.
         app.MapGroup("/api/auth")
             .WithTags("Autenticación")
             .MapIdentityApi<IdentityUser>()
@@ -55,6 +58,7 @@ public static class AccountsFeature
                 if (endpoint is RouteEndpointBuilder { RoutePattern.RawText: { } route } && !route.Contains("/manage/"))
                 {
                     endpoint.Metadata.Add(new AllowAnonymousAttribute());
+                    endpoint.Metadata.Add(new EnableRateLimitingAttribute(RateLimitingSetup.Login));
                 }
             });
 

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HelpDesk · BFF</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #1f2933; }
+    button, .link { font: inherit; padding: .4rem .8rem; margin: .2rem .2rem .2rem 0; cursor: pointer; }
+    .link { display: inline-block; border: 1px solid #7b8794; border-radius: 4px; color: inherit; text-decoration: none; }
+    pre { background: #f5f7fa; border: 1px solid #e4e7eb; padding: 1rem; overflow-x: auto; min-height: 6rem; }
+    .note { color: #52606d; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <h1>HelpDesk · demo del BFF</h1>
+  <p class="note">
+    Página de prueba del patrón Backend for Frontend. Este JavaScript nunca recibe un token: el navegador solo
+    tiene una cookie HttpOnly que JavaScript no puede leer. En la Fase 6 esta página la reemplaza React.
+  </p>
+
+  <p id="status">Revisando la sesión…</p>
+
+  <div id="anonymous" hidden>
+    <a class="link" href="/bff/login?returnUrl=/">Iniciar sesión con Keycloak</a>
+  </div>
+
+  <div id="session" hidden>
+    <button data-path="/api/me">GET /api/me</button>
+    <button data-path="/api/tickets?pageSize=5">GET /api/tickets</button>
+    <button data-path="/api/dashboard">GET /api/dashboard</button>
+    <button id="without-header">/api/me sin X-CSRF</button>
+    <a class="link" id="logout" href="#">Cerrar sesión</a>
+  </div>
+
+  <pre id="output"></pre>
+
+  <script>
+    const output = document.getElementById('output');
+
+    // fetch al mismo origen manda la cookie solo. El header X-CSRF prueba que la llamada sale de esta página.
+    async function call(path, headers = { 'X-CSRF': '1' }) {
+      const response = await fetch(path, { headers });
+      const text = await response.text();
+      let body = text;
+      try { body = JSON.stringify(JSON.parse(text), null, 2); } catch { /* no es JSON */ }
+      output.textContent = `${response.status} ${response.statusText}  ${path}\n\n${body}`;
+    }
+
+    async function loadSession() {
+      const response = await fetch('/bff/user');
+      if (response.status === 401) {
+        document.getElementById('status').textContent = 'Sin sesión.';
+        document.getElementById('anonymous').hidden = false;
+        return;
+      }
+
+      const user = await response.json();
+      document.getElementById('status').textContent = `Sesión de ${user.name} (${user.email ?? 'sin email'}).`;
+      document.getElementById('logout').href = user.logoutUrl;
+      document.getElementById('session').hidden = false;
+    }
+
+    document.querySelectorAll('button[data-path]').forEach(button =>
+      button.addEventListener('click', () => call(button.dataset.path)));
+    document.getElementById('without-header').addEventListener('click', () => call('/api/me', {}));
+
+    loadSession();
+  </script>
+</body>
+</html>

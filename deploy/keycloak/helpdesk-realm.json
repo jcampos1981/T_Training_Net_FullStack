@@ -61,6 +61,40 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "helpdesk-bff",
+      "name": "HelpDesk BFF",
+      "description": "Client confidencial: el BFF corre en el servidor y guarda un secreto. Authorization Code + PKCE; el navegador solo recibe una cookie.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${HELPDESK_BFF_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["https://localhost:7200/signin-oidc"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://localhost:7200/signout-callback-oidc"
+      },
+      "protocolMappers": [
+        {
+          "name": "audiencia helpdesk-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "helpdesk-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [

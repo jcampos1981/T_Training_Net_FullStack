@@ -1,3 +1,4 @@
+using HelpDesk.Api.Security;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 
@@ -9,8 +10,13 @@ public static class TokenEndpoints
 {
     public static IEndpointRouteBuilder MapTokenEndpoints(this IEndpointRouteBuilder app)
     {
-        // Anónimos a propósito: la credencial viene en el cuerpo (la contraseña o el refresh token).
-        RouteGroupBuilder tokens = app.MapGroup("/api/token").WithTags("Tokens JWT").AllowAnonymous();
+        // Anónimos a propósito: la credencial viene en el cuerpo (la contraseña o el refresh token). Por eso mismo
+        // llevan el límite de login: sin él, se podrían probar contraseñas o refresh tokens sin freno.
+        RouteGroupBuilder tokens = app.MapGroup("/api/token")
+            .WithTags("Tokens JWT")
+            .AllowAnonymous()
+            .RequireRateLimiting(RateLimitingSetup.Login)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests);
 
         tokens.MapPost("/", IssueToken)
             .WithName(nameof(IssueToken))
