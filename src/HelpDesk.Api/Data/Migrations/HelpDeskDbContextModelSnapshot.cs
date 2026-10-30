@@ -89,6 +89,10 @@ namespace HelpDesk.Api.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("RequestedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -120,6 +124,9 @@ namespace HelpDesk.Api.Data.Migrations
                         .HasFilter("[Status] IN (N'Open', N'InProgress')");
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "AssignedTo" }, "IX_Tickets_Open_AssignedTo"), new[] { "Status", "Priority", "CreatedAt" });
+
+                    b.HasIndex(new[] { "RequestedBy" }, "IX_Tickets_RequestedBy")
+                        .HasFilter("[RequestedBy] IS NOT NULL");
 
                     b.ToTable("Tickets", (string)null);
                 });

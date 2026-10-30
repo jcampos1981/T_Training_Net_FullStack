@@ -24,6 +24,8 @@ public sealed class TicketConfiguration : IEntityTypeConfiguration<Ticket>
 
         builder.Property(ticket => ticket.AssignedTo).HasMaxLength(50);
 
+        builder.Property(ticket => ticket.RequestedBy).HasMaxLength(256); // largo máximo de un email
+
         // rowversion de SQL Server: 8 bytes que la base cambia sola en cada INSERT/UPDATE.
         // En C# se ve como ulong; EF lo usa en el WHERE de cada UPDATE para detectar ediciones simultáneas.
         builder.Property(ticket => ticket.Version).IsRowVersion().HasConversion<byte[]>();
@@ -48,5 +50,12 @@ public sealed class TicketConfiguration : IEntityTypeConfiguration<Ticket>
         builder.HasIndex(ticket => ticket.AssignedTo, "IX_Tickets_Open_AssignedTo")
             .HasFilter("[Status] IN (N'Open', N'InProgress')")
             .IncludeProperties(ticket => new { ticket.Status, ticket.Priority, ticket.CreatedAt });
+
+        // Portal: "mis tickets" (WHERE RequestedBy = @cliente ORDER BY Id). Filtrado porque casi todos los tickets
+        // los crea el equipo (RequestedBy NULL): el índice guarda solo las filas de clientes y queda pequeño.
+        // A diferencia del filtro anterior, este SÍ sirve con parámetros: "RequestedBy = @p" nunca es verdadero
+        // para un NULL, así que SQL Server sabe que toda fila que busca está dentro del índice.
+        builder.HasIndex(ticket => ticket.RequestedBy, "IX_Tickets_RequestedBy")
+            .HasFilter("[RequestedBy] IS NOT NULL");
     }
 }

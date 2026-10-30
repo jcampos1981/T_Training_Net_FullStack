@@ -18,6 +18,10 @@ public sealed record Ticket
 
     public string? AssignedTo { get; init; }
 
+    // El email del cliente que lo abrió desde el portal; null si lo creó el equipo de soporte.
+    // Update() no lo toca: quién pidió el ticket no cambia.
+    public string? RequestedBy { get; init; }
+
     // Token de concurrencia optimista: la base lo cambia en cada INSERT/UPDATE (0 = aún no guardado).
     // Quien edita debe decir qué versión vio; si ya no es la actual, alguien más guardó antes.
     public ulong Version { get; init; }

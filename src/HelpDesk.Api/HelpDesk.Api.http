@@ -158,3 +158,43 @@ Content-Type: application/json
   "email": "nadie@helpdesk.local",
   "password": "no-es-la-clave"
 }
+
+### ---------- Portal del cliente (/api/portal), con camila (Customer) ----------
+
+### 24. Login de camila
+# @name customer
+POST {{baseUrl}}/api/token
+Content-Type: application/json
+
+{
+  "email": "camila@acme.local",
+  "password": "{{password}}"
+}
+
+### 25. Mis tickets: solo los que abrió camila
+GET {{baseUrl}}/api/portal/tickets
+Authorization: Bearer {{customer.response.body.$.accessToken}}
+
+### 26. Abrir un ticket: la descripción queda como primer comentario (Critical no se permite desde el portal)
+# @name opened
+POST {{baseUrl}}/api/portal/tickets
+Authorization: Bearer {{customer.response.body.$.accessToken}}
+Content-Type: application/json
+
+{
+  "title": "El correo no sincroniza en el celular",
+  "description": "Desde ayer el correo del celular no muestra mensajes nuevos; en el computador sí llegan.",
+  "priority": "Medium"
+}
+
+### 27. La conversación del ticket recién abierto
+GET {{baseUrl}}/api/portal/tickets/{{opened.response.body.$.id}}/comments
+Authorization: Bearer {{customer.response.body.$.accessToken}}
+
+### 28. Un ticket que no es suyo (el 1 lo creó el equipo): 404, igual que si no existiera
+GET {{baseUrl}}/api/portal/tickets/1
+Authorization: Bearer {{customer.response.body.$.accessToken}}
+
+### 29. Un cliente en la API del equipo: 403
+GET {{baseUrl}}/api/tickets
+Authorization: Bearer {{customer.response.body.$.accessToken}}

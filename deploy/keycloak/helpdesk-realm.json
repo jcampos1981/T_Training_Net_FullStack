@@ -3,7 +3,7 @@
   "displayName": "HelpDesk",
   "enabled": true,
   "sslRequired": "external",
-  "registrationAllowed": false,
+  "registrationAllowed": true,
   "loginWithEmailAllowed": true,
   "resetPasswordAllowed": false,
   "accessTokenLifespan": 300,
@@ -11,9 +11,22 @@
     "realm": [
       { "name": "Agent", "description": "Atiende los tickets que tiene asignados" },
       { "name": "Supervisor", "description": "Ve todos los tickets y reasigna la carga" },
-      { "name": "Admin", "description": "Administra usuarios" }
+      { "name": "Admin", "description": "Administra usuarios" },
+      { "name": "Customer", "description": "Cliente: abre tickets desde el portal y sigue los suyos" },
+      { "name": "offline_access", "description": "${role_offline-access}" },
+      { "name": "uma_authorization", "description": "${role_uma_authorization}" },
+      {
+        "name": "default-roles-helpdesk",
+        "description": "Roles de quien se registra solo en la página de Keycloak: Customer, nunca uno del equipo",
+        "composite": true,
+        "composites": {
+          "realm": ["offline_access", "uma_authorization", "Customer"],
+          "client": { "account": ["view-profile", "manage-account"] }
+        }
+      }
     ]
   },
+  "defaultRole": { "name": "default-roles-helpdesk" },
   "clients": [
     {
       "clientId": "helpdesk-api",
@@ -156,6 +169,18 @@
       "username": "admin", "email": "admin@helpdesk.local", "emailVerified": true,
       "firstName": "Admin", "lastName": "HelpDesk", "enabled": true,
       "realmRoles": ["Admin"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "camila", "email": "camila@acme.local", "emailVerified": true,
+      "firstName": "Camila", "lastName": "Cliente", "enabled": true,
+      "realmRoles": ["Customer"],
+      "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "diego", "email": "diego@acme.local", "emailVerified": true,
+      "firstName": "Diego", "lastName": "Cliente", "enabled": true,
+      "realmRoles": ["Customer"],
       "credentials": [{ "type": "password", "value": "${HELPDESK_DEV_PASSWORD}", "temporary": false }]
     }
   ]

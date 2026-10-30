@@ -7,8 +7,9 @@ public static class HelpDeskRoles
     public const string Agent = "Agent";            // atiende los tickets que tiene asignados
     public const string Supervisor = "Supervisor";  // ve todos los tickets y reasigna la carga
     public const string Admin = "Admin";            // administra usuarios
+    public const string Customer = "Customer";      // abre tickets desde el portal y sigue solo los suyos
 
-    public static readonly IReadOnlyList<string> All = [Agent, Supervisor, Admin];
+    public static readonly IReadOnlyList<string> All = [Agent, Supervisor, Admin, Customer];
 }
 
 // Claims propios. Un claim es un dato del usuario que viaja dentro de su identidad (la cookie o el token):

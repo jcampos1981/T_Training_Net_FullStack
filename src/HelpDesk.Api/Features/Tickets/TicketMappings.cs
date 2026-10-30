@@ -16,6 +16,7 @@ public static class TicketMappings
             ticket.Status,
             ticket.CreatedAt,
             ticket.AssignedTo,
-            ticket.Version.ToString(CultureInfo.InvariantCulture));
+            ticket.Version.ToString(CultureInfo.InvariantCulture),
+            ticket.RequestedBy);
     }
 }

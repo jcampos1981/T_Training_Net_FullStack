@@ -31,6 +31,19 @@ public sealed class TicketTests
     }
 
     [Fact]
+    public void Update_KeepsRequester()
+    {
+        // Arrange: un ticket abierto por un cliente desde el portal
+        Ticket fromPortal = TestTickets.Create() with { RequestedBy = "camila@acme.local" };
+
+        // Act: el equipo lo edita y lo asigna
+        Ticket updated = fromPortal.Update("Título revisado", TicketPriority.High, TicketStatus.InProgress, "pedro");
+
+        // Assert: quién lo pidió no cambia
+        Assert.Equal("camila@acme.local", updated.RequestedBy);
+    }
+
+    [Fact]
     public void Update_WhenOpen_ReturnsUpdatedCopyAndKeepsOriginal()
     {
         // Arrange

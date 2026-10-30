@@ -6,6 +6,7 @@ using HelpDesk.Api.Features.Accounts;
 using HelpDesk.Api.Features.Agents;
 using HelpDesk.Api.Features.Comments;
 using HelpDesk.Api.Features.Dashboard;
+using HelpDesk.Api.Features.Portal;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Middleware;
 using HelpDesk.Api.OpenApi;
@@ -70,6 +71,7 @@ builder.Services.AddTicketsFeature();
 builder.Services.AddCommentsFeature();
 builder.Services.AddAgentsFeature();
 builder.Services.AddDashboardFeature();
+builder.Services.AddPortalFeature();
 
 WebApplication app = builder.Build();
 
@@ -100,6 +102,7 @@ app.MapAccountsFeature(); // Identity: /api/auth/... y /api/me
 app.MapTicketsFeature();  // Minimal APIs
 app.MapCommentsFeature(); // Minimal APIs (recurso anidado de tickets)
 app.MapDashboardFeature(); // Minimal API con Dapper
+app.MapPortalFeature();    // portal del cliente: /api/portal/...
 app.MapControllers();     // Controllers (AgentsController)
 
 app.Run();

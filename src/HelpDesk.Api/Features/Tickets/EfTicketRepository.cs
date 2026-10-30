@@ -32,6 +32,11 @@ public sealed class EfTicketRepository(HelpDeskDbContext db) : ITicketRepository
             query = query.Where(ticket => ticket.AssignedTo == agent);
         }
 
+        if (filter.RequestedBy is { } customer)
+        {
+            query = query.Where(ticket => ticket.RequestedBy == customer);
+        }
+
         // Keyset: "WHERE Id > @after ORDER BY Id" + TOP. Con un índice cuyo orden incluya Id,
         // SQL Server salta directo al punto de partida y se detiene al juntar "take" filas.
         if (after is { } afterId)

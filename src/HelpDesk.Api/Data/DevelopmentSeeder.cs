@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using HelpDesk.Api.Features.Accounts;
 using HelpDesk.Api.Features.Comments;
+using HelpDesk.Api.Features.Portal;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Domain;
 using Microsoft.AspNetCore.Identity;
@@ -18,8 +19,22 @@ public static class DevelopmentSeeder
 
     private const string EmailDomain = "helpdesk.local";
 
+    // Los clientes son de otra empresa: su email no es del dominio del HelpDesk.
+    private const string CustomerEmailDomain = "acme.local";
+
     // Un usuario por cada agente que aparece en Ticket.AssignedTo.
     private static readonly string[] AgentNames = ["pedro", "luis", "marta", "sofia", "jorge", "carlos", "elena", "ana"];
+
+    private static readonly string[] CustomerNames = ["camila", "diego"];
+
+    private static readonly (string Customer, OpenTicketRequest Request)[] SamplePortalTickets =
+    [
+        ("camila", new("No puedo entrar al sistema de facturación", "Desde esta mañana el login me dice que la clave es incorrecta, pero no la he cambiado.", TicketPriority.High)),
+        ("camila", new("Solicitud de una cuenta nueva", "Ingresa una persona al área de contabilidad el lunes y necesita acceso al ERP.", TicketPriority.Low)),
+        ("camila", new("La impresora del piso 3 imprime en blanco", "Imprime las hojas sin nada; ya cambiamos el tóner y sigue igual.")),
+        ("diego", new("El VPN se corta cada 10 minutos", "Trabajo desde casa y la conexión se cae seguido; vuelve sola después de un rato.", TicketPriority.High)),
+        ("diego", new("Error al exportar un reporte a Excel", "El reporte de ventas mensual muestra un error al exportarlo; en PDF funciona bien."))
+    ];
 
     private static readonly (string Author, string Body)[] SampleComments =
     [
@@ -57,6 +72,20 @@ public static class DevelopmentSeeder
         }
 
         await SeedUsersAsync(provider.GetRequiredService<UserManager<IdentityUser>>(), password);
+
+        if (!await db.Tickets.AnyAsync(ticket => ticket.RequestedBy != null, cancellationToken))
+        {
+            await SeedPortalTicketsAsync(provider.GetRequiredService<OpenTicketHandler>(), cancellationToken);
+        }
+    }
+
+    // Por el mismo caso de uso que el portal: ticket y descripción, como si los hubiera abierto cada cliente.
+    private static async Task SeedPortalTicketsAsync(OpenTicketHandler handler, CancellationToken cancellationToken)
+    {
+        foreach ((string customer, OpenTicketRequest request) in SamplePortalTickets)
+        {
+            await handler.HandleAsync(request, $"{customer}@{CustomerEmailDomain}", customer, cancellationToken);
+        }
     }
 
     private static async Task SeedRolesAsync(RoleManager<IdentityRole> roles)
@@ -80,6 +109,11 @@ public static class DevelopmentSeeder
 
         await EnsureUserAsync(users, "laura", password, HelpDeskRoles.Supervisor);
         await EnsureUserAsync(users, "admin", password, HelpDeskRoles.Admin);
+
+        foreach (string customer in CustomerNames)
+        {
+            await EnsureUserAsync(users, customer, password, HelpDeskRoles.Customer, emailDomain: CustomerEmailDomain);
+        }
     }
 
     private static async Task EnsureUserAsync(
@@ -87,9 +121,10 @@ public static class DevelopmentSeeder
         string name,
         string password,
         string role,
-        params Claim[] claims)
+        Claim? claim = null,
+        string emailDomain = EmailDomain)
     {
-        string email = $"{name}@{EmailDomain}";
+        string email = $"{name}@{emailDomain}";
         if (await users.FindByEmailAsync(email) is not null)
         {
             return;
@@ -101,9 +136,9 @@ public static class DevelopmentSeeder
         EnsureSucceeded(await users.CreateAsync(user, password), $"crear el usuario {email}");
         EnsureSucceeded(await users.AddToRoleAsync(user, role), $"asignar el rol {role} a {email}");
 
-        if (claims.Length > 0)
+        if (claim is not null)
         {
-            EnsureSucceeded(await users.AddClaimsAsync(user, claims), $"agregar claims a {email}");
+            EnsureSucceeded(await users.AddClaimAsync(user, claim), $"agregar el claim {claim.Type} a {email}");
         }
     }
 

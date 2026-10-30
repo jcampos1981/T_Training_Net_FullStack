@@ -10,6 +10,11 @@ public static class HelpDeskUserExtensions
         // El nombre con el que aparece en Ticket.AssignedTo ("pedro"), o null si no es agente.
         public string? AgentName => user.FindFirstValue(HelpDeskClaimTypes.Agent);
 
+        // El email, igual venga de la cookie de Identity, de nuestro JWT o de Keycloak. Identifica al cliente en
+        // Ticket.RequestedBy. (Más robusto sería el "sub", que no cambia si el usuario cambia su email; el email
+        // se eligió porque en la tabla se lee solo.)
+        public string? Email => user.FindFirstValue(ClaimTypes.Email);
+
         // Supervisores y admins ven y mueven el trabajo de todo el equipo.
         public bool IsSupervisor => user.IsInRole(HelpDeskRoles.Supervisor) || user.IsInRole(HelpDeskRoles.Admin);
 

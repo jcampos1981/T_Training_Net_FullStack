@@ -12,4 +12,6 @@ public sealed record TicketResponse(
     DateTimeOffset CreatedAt,
     string? AssignedTo,
     // Texto y no número: JavaScript pierde precisión con enteros de más de 2^53.
-    string Version);
+    string Version,
+    // Al final a propósito: agregar un campo nuevo no rompe a los clientes que ya leen esta respuesta.
+    string? RequestedBy);

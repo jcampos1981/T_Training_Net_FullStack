@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 
 namespace HelpDesk.Api.Features.Accounts;
@@ -12,8 +13,12 @@ public static class HelpDeskPolicies
     // Lo que mira o mueve el trabajo de todo el equipo: dashboard, reasignaciones, borrar tickets.
     public const string Supervision = "Supervision";
 
+    // El portal del cliente (/api/portal). Un cliente no entra a /api/tickets: no es Staff.
+    public const string Customer = "Customer";
+
     public static AuthorizationBuilder AddHelpDeskPolicies(this AuthorizationBuilder builder) =>
         builder
             .AddPolicy(Staff, policy => policy.RequireRole(HelpDeskRoles.Agent, HelpDeskRoles.Supervisor, HelpDeskRoles.Admin))
-            .AddPolicy(Supervision, policy => policy.RequireRole(HelpDeskRoles.Supervisor, HelpDeskRoles.Admin));
+            .AddPolicy(Supervision, policy => policy.RequireRole(HelpDeskRoles.Supervisor, HelpDeskRoles.Admin))
+            .AddPolicy(Customer, policy => policy.RequireRole(HelpDeskRoles.Customer).RequireClaim(ClaimTypes.Email));
 }
