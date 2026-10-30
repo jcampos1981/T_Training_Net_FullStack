@@ -1,0 +1,38 @@
+{
+  "name": "helpdesk-portal",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Portal del cliente de HelpDesk: React + TypeScript, contra la API a través del BFF.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "tsc -b",
+    "api:generate": "openapi-typescript http://localhost:5159/openapi/v1.json --output src/api/schema.ts"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.104.3",
+    "openapi-fetch": "0.17.0",
+    "openapi-react-query": "0.5.4",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router": "7.18.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@tanstack/react-query-devtools": "5.104.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.7",
+    "globals": "17.13.0",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.71.2",
+    "vite": "8.3.4"
+  }
+}

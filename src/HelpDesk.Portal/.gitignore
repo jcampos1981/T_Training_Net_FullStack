@@ -1,0 +1,3 @@
+# node_modules/ ya lo ignora el .gitignore de la raíz.
+dist/
+*.tsbuildinfo

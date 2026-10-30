@@ -88,11 +88,14 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["https://localhost:7200/signin-oidc"],
+      "redirectUris": [
+        "https://localhost:7200/signin-oidc",
+        "http://localhost:5173/signin-oidc"
+      ],
       "webOrigins": [],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://localhost:7200/signout-callback-oidc"
+        "post.logout.redirect.uris": "https://localhost:7200/signout-callback-oidc##http://localhost:5173/signout-callback-oidc"
       },
       "protocolMappers": [
         {

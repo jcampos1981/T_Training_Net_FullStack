@@ -112,4 +112,7 @@ static void ConfigureJson(JsonSerializerOptions options)
     options.Converters.Add(new JsonStringEnumConverter()); // "High" en vez de 2
     options.RespectRequiredConstructorParameters = true;   // falta "priority" → 400
     options.RespectNullableAnnotations = true;             // "title": null → 400
+    // Por defecto la web acepta números escritos como texto ("id": "5"), y el documento OpenAPI lo refleja: los
+    // clientes generados (TypeScript) terminan con "number | string" en cada número. Strict: un número es un número.
+    options.NumberHandling = JsonNumberHandling.Strict;
 }
