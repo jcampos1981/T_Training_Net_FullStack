@@ -1,3 +1,2 @@
-# node_modules/ ya lo ignora el .gitignore de la raíz.
-dist/
+# node_modules/ ya lo ignora el .gitignore de la raíz. El build va a src/HelpDesk.Bff/wwwroot (ver vite.config.ts).
 *.tsbuildinfo

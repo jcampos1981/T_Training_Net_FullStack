@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link, Outlet } from 'react-router';
+import { Link, Outlet, ScrollRestoration } from 'react-router';
 import { $api } from '../api/client';
 import { loginUrl, useSession } from '../auth/session';
 import { ErrorMessage } from './ErrorMessage';
@@ -31,6 +31,9 @@ export function Layout() {
           </CustomerOnly>
         )}
       </main>
+
+      {/* Como en un sitio tradicional: una pantalla nueva empieza arriba, y "Atrás" vuelve a donde estabas. */}
+      <ScrollRestoration />
     </div>
   );
 }

@@ -23,6 +23,10 @@ public static class BffEndpoints
         bff.MapGet("/user", GetUser).RequireAuthorization();
         bff.MapGet("/logout", Logout).RequireAuthorization();
 
+        // Una ruta /bff que no existe es un 404, no la página de React: si no, la atraparía MapFrontendFallback y un
+        // fetch('/bff/usr') recibiría HTML con status 200.
+        bff.MapFallback(() => TypedResults.NotFound());
+
         return app;
     }
 

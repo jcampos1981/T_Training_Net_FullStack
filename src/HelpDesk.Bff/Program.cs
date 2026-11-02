@@ -1,5 +1,6 @@
 using HelpDesk.Bff.Authentication;
 using HelpDesk.Bff.Endpoints;
+using HelpDesk.Bff.Frontend;
 using HelpDesk.Bff.Proxy;
 using Microsoft.AspNetCore.HttpOverrides;
 
@@ -7,7 +8,9 @@ using Microsoft.AspNetCore.HttpOverrides;
 //   docker compose -f deploy/compose.yaml up -d keycloak
 //   dotnet run --project src/HelpDesk.Api --launch-profile http
 //   dotnet run --project src/HelpDesk.Bff          → https://localhost:7200 (usuarios del realm helpdesk)
-//   npm run dev  (en src/HelpDesk.Portal)          → http://localhost:5173, el portal React a través del BFF
+// y el portal React, de una de dos formas (en src/HelpDesk.Portal):
+//   npm run dev     → http://localhost:5173, con recarga en caliente; Vite reenvía /api y /bff a este BFF
+//   npm run build   → compila a wwwroot, y este BFF lo sirve en https://localhost:7200 (como en producción)
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -27,15 +30,14 @@ WebApplication app = builder.Build();
 app.UseForwardedHeaders(); // primero: todo lo que sigue (OpenID Connect, cookies) debe ver el esquema real
 app.UseExceptionHandler();
 app.UseStatusCodePages();
-
-// El frontend (por ahora una página de prueba; en la Fase 6, React) se sirve desde el mismo origen que /bff y /api.
-app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseFrontendSecurityHeaders(); // Content-Security-Policy y nosniff en todas las respuestas
+app.UseFrontendFiles();           // los archivos del portal (wwwroot), con la caché que corresponde a cada uno
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapBffEndpoints(); // /bff/login, /bff/user, /bff/logout
-app.MapApiProxy();     // /api/...
+app.MapBffEndpoints();     // /bff/login, /bff/user, /bff/logout
+app.MapApiProxy();         // /api/...
+app.MapFrontendFallback(); // todo lo demás es una pantalla de React: index.html
 
 app.Run();

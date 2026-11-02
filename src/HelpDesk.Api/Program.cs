@@ -20,7 +20,8 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi(options => options
     .AddDocumentTransformer<BearerSecuritySchemeTransformer>()      // pegar un token a mano
     .AddDocumentTransformer<KeycloakSecuritySchemeTransformer>());  // iniciar sesión en Keycloak
-builder.Services.AddProblemDetails();                             // errores con formato estándar RFC 9457
+builder.Services.AddProblemDetails(options =>                     // errores con formato estándar RFC 9457,
+    options.CustomizeProblemDetails = ValidationErrorKeys.UseJsonPropertyNames); // con "errors" en camelCase
 builder.Services.AddExceptionHandler<KnownExceptionHandler>();    // excepciones conocidas → 400 / 409
 builder.Services.AddOptions<ApiErrorOptions>().BindConfiguration(ApiErrorOptions.SectionName);
 // Por defecto solo Development lanza excepción ante parámetros inválidos; así ambos ambientes pasan

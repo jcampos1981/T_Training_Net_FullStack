@@ -15,6 +15,12 @@ const bff: ProxyOptions = {
 
 export default defineConfig({
   plugins: [react()],
+  // npm run build deja la app compilada en el wwwroot del BFF, que la sirve junto a /bff y /api (un solo origen).
+  // Los archivos de /assets llevan un hash en el nombre (index-a1b2c3.js): si cambia el contenido, cambia el nombre.
+  build: {
+    outDir: '../HelpDesk.Bff/wwwroot',
+    emptyOutDir: true, // la carpeta está fuera del proyecto: Vite pide confirmación explícita para vaciarla
+  },
   server: {
     port: 5173,
     strictPort: true, // si el puerto está ocupado, falla en vez de usar otro (las redirect_uri dependen de él)

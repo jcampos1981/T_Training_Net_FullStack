@@ -7,7 +7,7 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 
 export default defineConfig([
   // schema.ts lo genera openapi-typescript: no se edita a mano, así que tampoco se revisa.
-  globalIgnores(['dist', 'src/api/schema.ts']),
+  globalIgnores(['src/api/schema.ts']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

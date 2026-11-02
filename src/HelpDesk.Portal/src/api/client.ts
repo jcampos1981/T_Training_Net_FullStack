@@ -2,7 +2,8 @@ import createFetchClient, { type Middleware } from 'openapi-fetch';
 import createQueryClient from 'openapi-react-query';
 import type { paths } from './schema';
 
-// RFC 9457: el formato de error de la API (y del BFF). "errors" viene en los 400 de validación.
+// RFC 9457: el formato de error de la API (y del BFF). "errors" viene en los 400 de validación, con las claves en
+// camelCase como los campos del JSON ("title", no "Title").
 export interface ProblemDetails {
   type?: string;
   title?: string;
@@ -22,6 +23,23 @@ export class ApiError extends Error {
     this.status = status;
     this.problem = problem;
   }
+}
+
+// Las funciones que siguen reciben "unknown": openapi-react-query tipa el error con el cuerpo que declara el
+// OpenAPI (ProblemDetails), pero en tiempo de ejecución llega el ApiError que lanza el middleware. Se revisa con
+// instanceof en vez de forzar el tipo con un "as".
+
+export function hasStatus(error: unknown, status: number): error is ApiError {
+  return error instanceof ApiError && error.status === status;
+}
+
+// Un 400 con mensajes por campo: la pantalla los muestra junto a cada campo, no como un error general.
+export function isValidationError(error: unknown): error is ApiError {
+  return hasStatus(error, 400) && error.problem?.errors !== undefined;
+}
+
+export function validationErrorsFor(error: unknown, field: string): string[] {
+  return isValidationError(error) ? (error.problem?.errors?.[field] ?? []) : [];
 }
 
 async function readProblem(response: Response): Promise<ProblemDetails | null> {

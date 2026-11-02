@@ -1,0 +1,2 @@
+# wwwroot lo genera "npm run build" en src/HelpDesk.Portal: es el resultado de compilar el portal, no código fuente.
+wwwroot/
