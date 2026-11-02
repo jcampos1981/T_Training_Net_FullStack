@@ -1,0 +1,38 @@
+@inherits ErrorBoundaryBase
+@inject NavigationManager Navigation
+@inject ILogger<ApiErrorBoundary> Logger
+
+@* En Blazor Server una excepción sin atrapar termina el circuito: el usuario pierde la conexión y la pantalla entera.
+   Esta barrera la atrapa, muestra el problema y deja seguir trabajando. Las pantallas solo atrapan lo que esperan
+   (un 404); lo demás llega aquí. *@
+@if (CurrentException is null)
+{
+    @ChildContent
+}
+else if (CurrentException is not SessionEndedException)
+{
+    ApiErrorMessage message = ApiErrorMessage.From(CurrentException);
+
+    <MudAlert Severity="Severity.Error" Class="mb-3" data-testid="api-error">
+        <strong>@message.Title</strong>
+        <div>@message.Detail</div>
+    </MudAlert>
+    <MudButton Variant="Variant.Outlined" OnClick="Recover">Reintentar</MudButton>
+}
+
+@code {
+    protected override Task OnErrorAsync(Exception exception)
+    {
+        if (exception is SessionEndedException)
+        {
+            // Recargar es una petición HTTP de verdad: la cookie se rechaza y la autorización lleva a Keycloak.
+            Navigation.Refresh(forceReload: true);
+        }
+        else
+        {
+            Logger.LogError(exception, "Error en una pantalla del panel.");
+        }
+
+        return Task.CompletedTask;
+    }
+}

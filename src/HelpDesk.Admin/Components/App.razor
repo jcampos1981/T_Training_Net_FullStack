@@ -1,0 +1,43 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <ResourcePreloader />
+    <link rel="icon" type="image/svg+xml" href="@Assets["favicon.svg"]" />
+    <link rel="stylesheet" href="@Assets["_content/MudBlazor/MudBlazor.min.css"]" />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="@Assets["HelpDesk.Admin.styles.css"]" />
+    <HeadOutlet @rendermode="PageRenderMode" />
+</head>
+
+<body>
+    <Routes @rendermode="PageRenderMode" />
+    <ReconnectModal />
+    <script src="@Assets["app.js"]"></script>
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="@Assets["_content/MudBlazor/MudBlazor.min.js"]"></script>
+</body>
+
+</html>
+
+@code {
+    // Interactive Server: los componentes corren en el servidor y el navegador solo recibe los cambios del HTML por un
+    // WebSocket (el "circuito"). Para un panel interno es el modo que más conviene: nada que descargar, y ni el código
+    // ni los tokens salen del servidor.
+    //
+    // Sin prerender: con prerender cada página se dibuja dos veces (una como HTML estático y otra al conectarse el
+    // circuito) y llamaría dos veces a la API. Sirve para que los buscadores vean el contenido o para que se vea algo
+    // al instante; aquí todo exige login, así que no aporta. Además deja usar JavaScript desde OnInitializedAsync.
+    private static readonly IComponentRenderMode InteractiveWithoutPrerender = new InteractiveServerRenderMode(prerender: false);
+
+    // HttpContext solo existe en el render estático, que es justo donde corre App.razor.
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    // Una página con [ExcludeFromInteractiveRouting] (acceso denegado, error) se queda en Static SSR: HTML y nada más.
+    private IComponentRenderMode? PageRenderMode =>
+        HttpContext.AcceptsInteractiveRouting() ? InteractiveWithoutPrerender : null;
+}

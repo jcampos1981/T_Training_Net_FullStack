@@ -1,0 +1,11 @@
+<AuthorizeView>
+    <Authorized>
+        <MudText Typo="Typo.body2" Class="mr-3" data-testid="current-user">@context.User.Identity?.Name</MudText>
+        @* Un formulario normal, no un @onclick: cerrar sesión borra una cookie, y eso exige una respuesta HTTP. Dentro
+           del circuito no la hay. *@
+        <form method="post" action="/auth/logout">
+            <AntiforgeryToken />
+            <MudButton ButtonType="ButtonType.Submit" Color="Color.Inherit" Variant="Variant.Text">Cerrar sesión</MudButton>
+        </form>
+    </Authorized>
+</AuthorizeView>

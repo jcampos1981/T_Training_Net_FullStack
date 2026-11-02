@@ -1,0 +1,143 @@
+@page "/"
+@page "/tickets"
+@implements IDisposable
+@inject HelpDeskApiClient Client
+@inject NavigationManager Navigation
+
+<PageTitle>Tickets · HelpDesk</PageTitle>
+
+<MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">Tickets</MudText>
+
+<TicketFilters Value="filters" ValueChanged="ApplyFilters" />
+
+@if (tickets is null)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (tickets.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No hay tickets con estos filtros.</MudAlert>
+}
+else
+{
+    <MudTable T="TicketResponse" Items="tickets" Dense="true" Hover="true" Outlined="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>Código</MudTh>
+            <MudTh>Título</MudTh>
+            <MudTh>Prioridad</MudTh>
+            <MudTh>Estado</MudTh>
+            <MudTh>Agente</MudTh>
+            <MudTh>Solicitante</MudTh>
+            <MudTh>Creado</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Código"><code>@context.Code</code></MudTd>
+            <MudTd DataLabel="Título"><MudLink Href="@($"/tickets/{context.Id}")">@context.Title</MudLink></MudTd>
+            <MudTd DataLabel="Prioridad"><PriorityChip Priority="context.Priority" /></MudTd>
+            <MudTd DataLabel="Estado"><StatusChip Status="context.Status" /></MudTd>
+            <MudTd DataLabel="Agente">@(context.AssignedTo ?? "Sin asignar")</MudTd>
+            <MudTd DataLabel="Solicitante">@(context.RequestedBy ?? "Interno")</MudTd>
+            <MudTd DataLabel="Creado"><DateText Value="context.CreatedAt" /></MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    @if (nextAfter is not null)
+    {
+        <div class="d-flex justify-center mt-3">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="loadingMore" OnClick="LoadMoreAsync">
+                @(loadingMore ? "Cargando…" : "Cargar más")
+            </MudButton>
+        </div>
+    }
+}
+
+@code {
+    private const int PageSize = 25;
+
+    // Los filtros viven en la URL (?estado=Open&agente=pedro): "Atrás" funciona y el enlace se puede compartir. La query
+    // string solo admite tipos simples, no enums: TicketFilterValues convierte los textos.
+    [SupplyParameterFromQuery(Name = TicketFilterValues.StatusKey)]
+    public string? StatusQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = TicketFilterValues.PriorityKey)]
+    public string? PriorityQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = TicketFilterValues.AgentKey)]
+    public string? AgentQuery { get; set; }
+
+    private TicketFilterValues filters = TicketFilterValues.None;
+    private List<TicketResponse>? tickets;
+    private int? nextAfter;
+    private bool loadingMore;
+    private CancellationTokenSource? loadCancellation;
+
+    // Ciclo de vida: OnInitialized corre una sola vez, y OnParametersSet cada vez que cambian los parámetros. Al cambiar
+    // un filtro Blazor reutiliza esta misma instancia, así que cargar en OnInitialized dejaría la lista antigua.
+    protected override async Task OnParametersSetAsync()
+    {
+        TicketFilterValues requested = TicketFilterValues.FromQuery(StatusQuery, PriorityQuery, AgentQuery);
+
+        if (tickets is not null && requested == filters)
+        {
+            return;
+        }
+
+        filters = requested;
+        tickets = null;
+        nextAfter = null;
+        await LoadPageAsync(after: 0);
+    }
+
+    // El hijo avisa con un EventCallback y el padre decide qué hacer: aquí, cambiar la URL. Eso vuelve a pasar por
+    // OnParametersSetAsync, que es el único lugar que carga la primera página.
+    private void ApplyFilters(TicketFilterValues next) =>
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters(next.ToQuery()));
+
+    private async Task LoadMoreAsync()
+    {
+        loadingMore = true;
+        try
+        {
+            await LoadPageAsync(nextAfter ?? 0);
+        }
+        finally
+        {
+            loadingMore = false;
+        }
+    }
+
+    private async Task LoadPageAsync(int after)
+    {
+        // Si el usuario cambia de filtro mientras esto carga, la respuesta anterior ya no interesa.
+        loadCancellation?.Cancel();
+        loadCancellation?.Dispose();
+        loadCancellation = new CancellationTokenSource();
+        CancellationToken cancellation = loadCancellation.Token;
+
+        try
+        {
+            CursorPageOfTicketResponse? page = await Client.Api.Tickets.GetAsync(request =>
+            {
+                request.QueryParameters.After = after;
+                request.QueryParameters.PageSize = PageSize;
+                request.QueryParameters.Status = filters.Status;
+                request.QueryParameters.Priority = filters.Priority;
+                request.QueryParameters.AssignedTo = filters.Agent;
+            }, cancellation);
+
+            tickets ??= [];
+            tickets.AddRange(page?.Items ?? []);
+            nextAfter = page?.NextAfter;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // La canceló una carga más nueva, o el usuario salió de la pantalla: no hay nada que mostrar.
+        }
+    }
+
+    public void Dispose()
+    {
+        loadCancellation?.Cancel();
+        loadCancellation?.Dispose();
+    }
+}

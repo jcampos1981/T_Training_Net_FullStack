@@ -1,0 +1,26 @@
+@if (Comments.Count == 0)
+{
+    <MudText Color="Color.Secondary">Este ticket todavía no tiene comentarios.</MudText>
+}
+else
+{
+    <ol class="conversation">
+        @* @key: si la lista cambia, Blazor reconoce cada comentario por su Id en vez de por su posición. *@
+        @foreach (CommentResponse comment in Comments)
+        {
+            <li @key="comment.Id" class="comment">
+                <div class="comment-meta">
+                    <strong>@comment.Author</strong>
+                    <DateText Value="comment.CreatedAt" />
+                </div>
+                @* Blazor escapa todo lo que se escribe con @: un "<script>" en un comentario se muestra como texto. *@
+                <p class="comment-body">@comment.Body</p>
+            </li>
+        }
+    </ol>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<CommentResponse> Comments { get; set; } = [];
+}

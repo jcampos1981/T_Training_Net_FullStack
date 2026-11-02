@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Panel del equipo de soporte en Blazor Web App (Interactive Server). Inicia sesión en Keycloak, guarda los
+       tokens en el servidor y llama a HelpDesk.Api con un cliente generado desde su OpenAPI (Kiota). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <UserSecretsId>83f39d7d-457b-4e02-8c6d-eb9aa31bdf82</UserSecretsId>
+    <!-- Un switch sobre un enum sin todos sus valores no compila: si la API agrega un estado y se regenera el
+         cliente, TicketLabels avisa. Es la misma garantía que Record<Union, string> en el portal React. -->
+    <WarningsAsErrors>$(WarningsAsErrors);CS8509</WarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
+    <PackageReference Include="Microsoft.Kiota.Bundle" />
+    <PackageReference Include="MudBlazor" />
+  </ItemGroup>
+
+</Project>

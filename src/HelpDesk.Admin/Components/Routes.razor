@@ -1,0 +1,12 @@
+﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        @* AuthorizeRouteView revisa [Authorize] de cada página también al navegar dentro del circuito, donde ya no hay
+           peticiones HTTP que pasen por RequireAuthorization. *@
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                <MudAlert Severity="Severity.Warning">No tienes permiso para ver esta página.</MudAlert>
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>

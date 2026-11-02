@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/HelpDesk.Admin/HelpDesk.Admin.csproj" />
     <Project Path="src/HelpDesk.Api/HelpDesk.Api.csproj" />
     <Project Path="src/HelpDesk.Bff/HelpDesk.Bff.csproj" />
     <Project Path="src/HelpDesk.Domain/HelpDesk.Domain.csproj" />

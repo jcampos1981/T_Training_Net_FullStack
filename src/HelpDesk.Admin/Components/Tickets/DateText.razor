@@ -1,0 +1,13 @@
+@if (Value is { } value)
+{
+    <time datetime="@value.ToString("o")">@TimeZoneInfo.ConvertTime(value, UserTimeZone).ToString("d MMM yyyy, HH:mm")</time>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public DateTimeOffset? Value { get; set; }
+
+    // La zona horaria del navegador, que MainLayout obtiene una vez y reparte a todos con un CascadingValue.
+    [CascadingParameter]
+    private TimeZoneInfo UserTimeZone { get; set; } = TimeZoneInfo.Utc;
+}

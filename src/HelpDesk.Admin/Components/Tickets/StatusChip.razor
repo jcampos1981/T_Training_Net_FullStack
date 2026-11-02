@@ -1,0 +1,10 @@
+@* Kiota deja todas las propiedades como anulables: tolera respuestas parciales. Por eso el parámetro admite null. *@
+@if (Status is { } status)
+{
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="TicketLabels.ColorOf(status)">@TicketLabels.Of(status)</MudChip>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public TicketStatus? Status { get; set; }
+}

@@ -1,0 +1,32 @@
+﻿@* Aparece si se corta el WebSocket: sin circuito la pantalla no responde, así que hay que decirlo. *@
+<script type="module" src="@Assets["Components/Layout/ReconnectModal.razor.js"]"></script>
+
+<dialog id="components-reconnect-modal" data-nosnippet>
+    <div class="components-reconnect-container">
+        <div class="components-rejoining-animation" aria-hidden="true">
+            <div></div>
+            <div></div>
+        </div>
+        <p class="components-reconnect-first-attempt-visible">
+            Reconectando con el servidor…
+        </p>
+        <p class="components-reconnect-repeated-attempt-visible">
+            No se pudo reconectar. Se intentará de nuevo en <span id="components-seconds-to-next-attempt"></span> segundos.
+        </p>
+        <p class="components-reconnect-failed-visible">
+            No se pudo reconectar.<br />Reintenta o recarga la página.
+        </p>
+        <button id="components-reconnect-button" class="components-reconnect-failed-visible">
+            Reintentar
+        </button>
+        <p class="components-pause-visible">
+            El servidor pausó la sesión.
+        </p>
+        <p class="components-resume-failed-visible">
+            No se pudo retomar la sesión.<br />Reintenta o recarga la página.
+        </p>
+        <button id="components-resume-button" class="components-pause-visible components-resume-failed-visible">
+            Retomar
+        </button>
+    </div>
+</dialog>

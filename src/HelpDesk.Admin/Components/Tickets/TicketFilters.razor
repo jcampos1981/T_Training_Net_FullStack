@@ -1,0 +1,53 @@
+@* Parámetros hacia abajo, EventCallback hacia arriba: este componente no sabe de URLs ni de la API. Solo muestra los
+   filtros que recibe y avisa cuando el usuario cambia uno. *@
+<MudPaper Outlined="true" Elevation="0" Class="pa-3 mb-3">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="4">
+            <MudSelect T="TicketStatus?" Label="Estado" Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined"
+                       data-testid="filter-status" ToStringFunc="StatusText"
+                       Value="Value.Status" ValueChanged="status => ValueChanged.InvokeAsync(Value with { Status = status })">
+                <MudSelectItem T="TicketStatus?" Value="@((TicketStatus?)null)">Todos</MudSelectItem>
+                @foreach (TicketStatus status in Enum.GetValues<TicketStatus>())
+                {
+                    <MudSelectItem T="TicketStatus?" Value="@status">@TicketLabels.Of(status)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12" sm="4">
+            <MudSelect T="TicketPriority?" Label="Prioridad" Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined"
+                       data-testid="filter-priority" ToStringFunc="PriorityText"
+                       Value="Value.Priority" ValueChanged="priority => ValueChanged.InvokeAsync(Value with { Priority = priority })">
+                <MudSelectItem T="TicketPriority?" Value="@((TicketPriority?)null)">Todas</MudSelectItem>
+                @foreach (TicketPriority priority in Enum.GetValues<TicketPriority>())
+                {
+                    <MudSelectItem T="TicketPriority?" Value="@priority">@TicketLabels.Of(priority)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        @* Un agente solo ve lo suyo (lo decide la API), así que filtrar por agente no le sirve. *@
+        <AuthorizeView Roles="@AdminRoles.Supervision">
+            <MudItem xs="12" sm="4">
+                <MudTextField T="string" Label="Agente" Margin="Margin.Dense" Variant="Variant.Outlined" Clearable="true"
+                              DebounceInterval="400" data-testid="filter-agent"
+                              Value="Value.Agent" ValueChanged="agent => ValueChanged.InvokeAsync(Value with { Agent = NullIfBlank(agent) })" />
+            </MudItem>
+        </AuthorizeView>
+    </MudGrid>
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired]
+    public TicketFilterValues Value { get; set; } = TicketFilterValues.None;
+
+    // El nombre "<Parámetro>Changed" es la convención que permite usar @bind-Value con este componente.
+    [Parameter]
+    public EventCallback<TicketFilterValues> ValueChanged { get; set; }
+
+    private static string StatusText(TicketStatus? status) => status is { } value ? TicketLabels.Of(value) : "Todos";
+
+    private static string PriorityText(TicketPriority? priority) => priority is { } value ? TicketLabels.Of(value) : "Todas";
+
+    private static string? NullIfBlank(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+}

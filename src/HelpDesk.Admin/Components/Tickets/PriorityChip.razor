@@ -1,0 +1,9 @@
+@if (Priority is { } priority)
+{
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="TicketLabels.ColorOf(priority)">@TicketLabels.Of(priority)</MudChip>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public TicketPriority? Priority { get; set; }
+}

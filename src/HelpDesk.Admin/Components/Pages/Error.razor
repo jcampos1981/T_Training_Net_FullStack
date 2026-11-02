@@ -1,0 +1,22 @@
+﻿@page "/error"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout StaticLayout
+@using System.Diagnostics
+
+<PageTitle>Error · HelpDesk</PageTitle>
+
+<h1>Ocurrió un error</h1>
+<p>No pudimos procesar tu solicitud. Inténtalo de nuevo en unos minutos.</p>
+
+@if (RequestId is not null)
+{
+    <p>Si avisas a soporte, indica este identificador: <code>@RequestId</code></p>
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId => Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

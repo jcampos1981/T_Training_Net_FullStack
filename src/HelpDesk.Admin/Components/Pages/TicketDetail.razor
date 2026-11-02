@@ -1,0 +1,70 @@
+@page "/tickets/{Id:int}"
+@inject HelpDeskApiClient Client
+
+<PageTitle>@(ticket?.Code ?? "Ticket") · HelpDesk</PageTitle>
+
+<MudLink Href="/tickets" Class="d-block mb-3">← Tickets</MudLink>
+
+@if (unavailable is not null)
+{
+    <MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">@unavailable.Title</MudText>
+    <MudText>@unavailable.Detail</MudText>
+}
+else if (ticket is null)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true"><code>@ticket.Code</code> @ticket.Title</MudText>
+
+    <MudSimpleTable Dense="true" Outlined="true" Elevation="0" Class="mb-4 ticket-facts">
+        <tbody>
+            <tr><th scope="row">Estado</th><td><StatusChip Status="ticket.Status" /></td></tr>
+            <tr><th scope="row">Prioridad</th><td><PriorityChip Priority="ticket.Priority" /></td></tr>
+            <tr><th scope="row">Agente</th><td>@(ticket.AssignedTo ?? "Sin asignar")</td></tr>
+            <tr><th scope="row">Solicitante</th><td>@(ticket.RequestedBy ?? "Interno")</td></tr>
+            <tr><th scope="row">Creado</th><td><DateText Value="ticket.CreatedAt" /></td></tr>
+        </tbody>
+    </MudSimpleTable>
+
+    <MudText Typo="Typo.h5" HtmlTag="h2" GutterBottom="true">Conversación</MudText>
+    <Conversation Comments="conversation" />
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private TicketResponse? ticket;
+    private IReadOnlyList<CommentResponse> conversation = [];
+    private ApiErrorMessage? unavailable;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        ticket = null;
+        unavailable = null;
+
+        try
+        {
+            // Las dos llamadas salen en paralelo. Si el token está por vencer, SessionAccessTokens lo renueva una sola vez.
+            var requests = Client.Api.Tickets[Id];
+            Task<TicketResponse?> ticketRequest = requests.GetAsync();
+            Task<List<CommentResponse>?> commentsRequest = requests.Comments.GetAsync();
+            await Task.WhenAll(ticketRequest, commentsRequest);
+
+            ticket = await ticketRequest;
+            // La API los devuelve del más reciente al más antiguo; una conversación se lee al revés.
+            conversation = [.. Enumerable.Reverse(await commentsRequest ?? [])];
+        }
+        catch (ApiException error) when (error.ResponseStatusCode == StatusCodes.Status404NotFound)
+        {
+            unavailable = new ApiErrorMessage("No encontramos ese ticket", "Puede que el enlace esté mal o que lo hayan eliminado.");
+        }
+        catch (ApiException error) when (error.ResponseStatusCode == StatusCodes.Status403Forbidden)
+        {
+            // La decisión es de la API (un agente solo ve los suyos). El panel solo la muestra.
+            unavailable = new ApiErrorMessage("Este ticket no está asignado a ti", "Solo supervisión puede ver los tickets de otros agentes.");
+        }
+    }
+}
