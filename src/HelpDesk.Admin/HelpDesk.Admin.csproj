@@ -18,4 +18,8 @@
     <PackageReference Include="MudBlazor" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\HelpDesk.ServiceDefaults\HelpDesk.ServiceDefaults.csproj" />
+  </ItemGroup>
+
 </Project>

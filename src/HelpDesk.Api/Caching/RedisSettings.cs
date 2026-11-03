@@ -10,7 +10,9 @@ public static class RedisSettings
     // null = sin Redis configurado: la API funciona igual, con una sola instancia (caché en memoria y avisos locales).
     public static ConfigurationOptions? From(IConfiguration configuration)
     {
-        if (configuration.GetConnectionString(ConnectionName) is not { } connection)
+        string? connection = configuration.GetConnectionString(ConnectionName);
+
+        if (string.IsNullOrWhiteSpace(connection))
         {
             return null;
         }

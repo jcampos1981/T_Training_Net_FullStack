@@ -127,6 +127,16 @@ Authorization: Bearer {{supervisor.response.body.$.accessToken}}
 GET {{baseUrl}}/api/sla/alerts?level=AtRisk
 Authorization: Bearer {{supervisor.response.body.$.accessToken}}
 
+### 20. ¿El proceso responde? Abierto y sin detalles: no mira las dependencias
+GET {{baseUrl}}/health/live
+
+### 21. ¿Puede atender tráfico? 200 Healthy o Degraded; 503 Unhealthy si la base está caída
+GET {{baseUrl}}/health/ready
+
+### 22. Qué revisó, y cómo le fue a cada cosa. Solo supervisión
+GET {{baseUrl}}/health/details
+Authorization: Bearer {{supervisor.response.body.$.accessToken}}
+
 ### ---------- OpenID Connect con Keycloak (docker compose -f deploy/compose.yaml up -d keycloak) ----------
 # El login es en la página de Keycloak, no aquí: abre /scalar, elige "Keycloak" en la autenticación y entra con
 # pedro o laura (misma contraseña de desarrollo). Scalar usa Authorization Code + PKCE.

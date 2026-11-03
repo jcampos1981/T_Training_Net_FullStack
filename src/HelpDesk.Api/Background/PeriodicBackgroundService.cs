@@ -4,9 +4,15 @@ namespace HelpDesk.Api.Background;
 // cuánto. Se ejecuta una vez al arrancar la aplicación y después en cada intervalo.
 public abstract class PeriodicBackgroundService(IServiceScopeFactory scopes, TimeProvider clock, ILogger logger) : BackgroundService
 {
+    // En ticks: lo escribe este trabajo y lo lee otro hilo, y un DateTimeOffset no se puede leer ni escribir de una sola vez.
+    private long lastSuccessTicks = clock.GetUtcNow().UtcTicks;
+
     protected ILogger Logger { get; } = logger;
 
-    protected abstract TimeSpan Interval { get; }
+    public abstract TimeSpan Interval { get; }
+
+    // Cuándo terminó bien su última vuelta, o cuándo se creó si todavía no termina ninguna.
+    public DateTimeOffset LastSuccessAt => new(Interlocked.Read(ref lastSuccessTicks), TimeSpan.Zero);
 
     // Un BackgroundService es singleton, y el DbContext es Scoped: pedirlo en el constructor dejaría uno solo, vivo para
     // siempre, con su caché y su conexión. Por eso cada vuelta recibe un scope nuevo, como si fuera una petición HTTP.
@@ -38,6 +44,7 @@ public abstract class PeriodicBackgroundService(IServiceScopeFactory scopes, Tim
         {
             await using AsyncServiceScope scope = scopes.CreateAsyncScope();
             await RunOnceAsync(scope.ServiceProvider, stoppingToken);
+            Interlocked.Exchange(ref lastSuccessTicks, clock.GetUtcNow().UtcTicks);
         }
         catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
         {

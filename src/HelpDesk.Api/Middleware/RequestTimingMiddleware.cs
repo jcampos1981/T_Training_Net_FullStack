@@ -6,6 +6,8 @@ namespace HelpDesk.Api.Middleware;
 // Equivale a un app.use((req, res, next) => ...) de Express.
 public sealed class RequestTimingMiddleware(RequestDelegate next, ILogger<RequestTimingMiddleware> logger)
 {
+    private const string HealthPath = "/health";
+
     public async Task InvokeAsync(HttpContext context)
     {
         long startedAt = Stopwatch.GetTimestamp();
@@ -13,7 +15,10 @@ public sealed class RequestTimingMiddleware(RequestDelegate next, ILogger<Reques
         try
         {
             await next(context); // Lo que sigue a esta línea corre de regreso, con la respuesta ya armada.
-            LogRequest(context, startedAt, LogLevel.Information, context.Response.StatusCode.ToString());
+
+            // Un orquestador pregunta por la salud cada pocos segundos: esas líneas taparían las peticiones de verdad.
+            LogLevel level = context.Request.Path.StartsWithSegments(HealthPath) ? LogLevel.Debug : LogLevel.Information;
+            LogRequest(context, startedAt, level, context.Response.StatusCode.ToString());
         }
         catch (Exception exception)
         {

@@ -11,6 +11,7 @@ using HelpDesk.Api.Features.Notifications;
 using HelpDesk.Api.Features.Portal;
 using HelpDesk.Api.Features.Sla;
 using HelpDesk.Api.Features.Tickets;
+using HelpDesk.Api.Health;
 using HelpDesk.Api.Middleware;
 using HelpDesk.Api.OpenApi;
 using HelpDesk.Api.Security;
@@ -82,6 +83,7 @@ builder.Services.AddDashboardFeature();
 builder.Services.AddPortalFeature();
 builder.Services.AddNotificationsFeature(ConfigureJson, redis);
 builder.Services.AddSlaFeature();
+builder.Services.AddApiHealthChecks(redis);
 
 WebApplication app = builder.Build();
 
@@ -109,6 +111,7 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference((options, context) => options.AddKeycloakLogin(context.RequestServices)).AllowAnonymous();
 }
 
+app.MapApiHealth();       // /health/live, /health/ready y /health/details
 app.MapAccountsFeature(); // Identity: /api/auth/... y /api/me
 app.MapTicketsFeature();  // Minimal APIs
 app.MapCommentsFeature(); // Minimal APIs (recurso anidado de tickets)

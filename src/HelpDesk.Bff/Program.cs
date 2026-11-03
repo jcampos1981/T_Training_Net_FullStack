@@ -1,7 +1,9 @@
 using HelpDesk.Bff.Authentication;
 using HelpDesk.Bff.Endpoints;
 using HelpDesk.Bff.Frontend;
+using HelpDesk.Bff.Health;
 using HelpDesk.Bff.Proxy;
+using HelpDesk.ServiceDefaults;
 using Microsoft.AspNetCore.HttpOverrides;
 
 // Para probarlo:
@@ -24,6 +26,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddBffAuthentication(); // login con Keycloak y sesión en una cookie
 builder.Services.AddAuthorization();
 builder.Services.AddApiProxy(builder.Configuration); // /api/... y /hubs/... → HelpDesk.Api, con el access token
+builder.Services.AddBffHealthChecks(builder.Configuration);
 
 WebApplication app = builder.Build();
 
@@ -36,6 +39,7 @@ app.UseFrontendFiles();           // los archivos del portal (wwwroot), con la c
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapHealthEndpoints();  // /health/live y /health/ready
 app.MapBffEndpoints();     // /bff/login, /bff/user, /bff/logout
 app.MapApiProxy();         // /api/... y /hubs/...
 app.MapFrontendFallback(); // todo lo demás es una pantalla de React: index.html

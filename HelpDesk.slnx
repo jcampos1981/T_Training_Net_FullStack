@@ -5,6 +5,7 @@
     <Project Path="src/HelpDesk.Bff/HelpDesk.Bff.csproj" />
     <Project Path="src/HelpDesk.Domain/HelpDesk.Domain.csproj" />
     <Project Path="src/HelpDesk.Importer/HelpDesk.Importer.csproj" />
+    <Project Path="src/HelpDesk.ServiceDefaults/HelpDesk.ServiceDefaults.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/HelpDesk.Benchmarks/HelpDesk.Benchmarks.csproj" />

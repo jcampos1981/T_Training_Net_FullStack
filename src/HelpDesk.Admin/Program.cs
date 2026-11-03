@@ -1,7 +1,9 @@
 using HelpDesk.Admin.Api;
 using HelpDesk.Admin.Authentication;
 using HelpDesk.Admin.Components;
+using HelpDesk.Admin.Health;
 using HelpDesk.Admin.Security;
+using HelpDesk.ServiceDefaults;
 using MudBlazor;
 using MudBlazor.Services;
 
@@ -18,6 +20,7 @@ builder.Services.AddRazorComponents()
 builder.Services.AddMudServices(options => options.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.BottomRight);
 builder.Services.AddAdminAuthentication(); // login con Keycloak, cookie y tokens en el servidor
 builder.Services.AddHelpDeskApi();         // cliente generado de la API, con el token del usuario de cada circuito
+builder.Services.AddAdminHealthChecks(builder.Configuration);
 
 WebApplication app = builder.Build();
 
@@ -40,6 +43,7 @@ app.UseAntiforgery();
 
 app.MapStaticAssets();
 app.MapAuthEndpoints();
+app.MapHealthEndpoints(); // /health/live y /health/ready: fuera del "cerrado por defecto" de las páginas
 
 // Cerrado por defecto: toda página (y el WebSocket del circuito) exige ser del equipo. Una página anónima tiene que
 // declararlo con [AllowAnonymous]. La API revisa de nuevo en cada llamada: esto solo decide quién entra al panel.

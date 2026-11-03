@@ -13,7 +13,7 @@ public sealed class SlaMonitor(
     TimeProvider clock,
     ILogger<SlaMonitor> logger) : PeriodicBackgroundService(scopes, clock, logger)
 {
-    protected override TimeSpan Interval => options.Value.CheckInterval;
+    public override TimeSpan Interval => options.Value.CheckInterval;
 
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken cancellationToken)
     {

@@ -39,7 +39,10 @@ public static class SlaFeature
 
         services.AddScoped<SlaAlertScanner>();
         services.AddScoped<SlaAlertQueries>();
-        services.AddHostedService<SlaMonitor>();
+
+        // También como singleton con su propio nombre: el health check le pregunta cuándo terminó su última vuelta.
+        services.AddSingleton<SlaMonitor>();
+        services.AddHostedService(provider => provider.GetRequiredService<SlaMonitor>());
 
         return services;
     }

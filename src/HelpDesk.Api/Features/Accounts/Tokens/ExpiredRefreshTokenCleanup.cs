@@ -8,7 +8,7 @@ public sealed class ExpiredRefreshTokenCleanup(
     TimeProvider clock,
     ILogger<ExpiredRefreshTokenCleanup> logger) : PeriodicBackgroundService(scopes, clock, logger)
 {
-    protected override TimeSpan Interval => TimeSpan.FromHours(6);
+    public override TimeSpan Interval => TimeSpan.FromHours(6);
 
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
