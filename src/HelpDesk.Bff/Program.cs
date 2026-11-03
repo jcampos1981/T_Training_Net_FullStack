@@ -5,7 +5,7 @@ using HelpDesk.Bff.Proxy;
 using Microsoft.AspNetCore.HttpOverrides;
 
 // Para probarlo:
-//   docker compose -f deploy/compose.yaml up -d keycloak
+//   docker compose -f deploy/compose.yaml up -d keycloak sqlserver redis
 //   dotnet run --project src/HelpDesk.Api --launch-profile http
 //   dotnet run --project src/HelpDesk.Bff          → https://localhost:7200 (usuarios del realm helpdesk)
 // y el portal React, de una de dos formas (en src/HelpDesk.Portal):

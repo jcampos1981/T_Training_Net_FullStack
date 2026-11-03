@@ -1,5 +1,7 @@
 using System.Text.Json;
 using HelpDesk.Api.Features.Accounts;
+using Microsoft.AspNetCore.SignalR;
+using StackExchange.Redis;
 
 namespace HelpDesk.Api.Features.Notifications;
 
@@ -7,11 +9,27 @@ namespace HelpDesk.Api.Features.Notifications;
 public static class NotificationsFeature
 {
     private const string TicketEventsPath = "/hubs/tickets";
+    private const string RedisChannelPrefix = "helpdesk";
 
-    public static IServiceCollection AddNotificationsFeature(this IServiceCollection services, Action<JsonSerializerOptions> configureJson)
+    public static IServiceCollection AddNotificationsFeature(
+        this IServiceCollection services,
+        Action<JsonSerializerOptions> configureJson,
+        ConfigurationOptions? redis)
     {
         // El mismo JSON que el resto de la API: enums como texto ("Closed" y no 3).
-        services.AddSignalR().AddJsonProtocol(options => configureJson(options.PayloadSerializerOptions));
+        ISignalRServerBuilder signalR = services.AddSignalR().AddJsonProtocol(options => configureJson(options.PayloadSerializerOptions));
+
+        // Backplane: cada instancia solo conoce a sus propios clientes. Con Redis, un aviso que sale de una instancia llega
+        // a los conectados a cualquier otra. Sin él, quien esté en otra instancia no se enteraría.
+        if (redis is not null)
+        {
+            signalR.AddStackExchangeRedis(options =>
+            {
+                options.Configuration = redis.Clone();
+                options.Configuration.ChannelPrefix = RedisChannel.Literal(RedisChannelPrefix);
+            });
+        }
+
         services.AddSingleton<ITicketNotifier, SignalRTicketNotifier>();
 
         return services;

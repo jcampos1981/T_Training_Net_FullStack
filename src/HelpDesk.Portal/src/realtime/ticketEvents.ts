@@ -24,6 +24,10 @@ export interface TicketEventsHandlers {
 
 const maxRetryDelayMs = 30_000;
 
+// Una conexión que no llegó a durar esto cuenta como un intento fallido: el servidor la aceptó y la cerró enseguida. Pasa
+// con Redis caído, porque no puede unirla a sus grupos. Sin esta regla, el cliente reintentaría al instante, en bucle.
+const stableConnectionMs = 30_000;
+
 // Espera cada vez más entre intentos, y con azar: si la API se reinicia, los clientes no vuelven todos en el mismo instante.
 function retryDelay(attempt: number): number {
   const delay = Math.min(maxRetryDelayMs, 1_000 * 2 ** attempt);
@@ -43,12 +47,22 @@ export function connectTicketEvents(handlers: TicketEventsHandlers): () => void 
     .build();
 
   let stopped = false;
-  let hasBeenLive = false;
+  let failures = 0;
+  let needsResync = false;
+  let connectedAt = 0;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function retryLater(): void {
+    // Solo un intento fallido cambia el estado: el cierre rutinario al vencer el token no debe notarse en pantalla.
+    handlers.onConnectionChange(false);
+    needsResync = true;
+    retryTimer = setTimeout(() => void connect(), retryDelay(failures));
+    failures += 1;
+  }
 
   // Un solo camino para las tres situaciones: el primer intento, un corte de red y el cierre al vencer el token.
   // withAutomaticReconnect() no cubre el primer intento, y se rinde después de cuatro intentos.
-  async function connect(attempt = 0): Promise<void> {
+  async function connect(): Promise<void> {
     try {
       await connection.start();
     } catch {
@@ -66,24 +80,32 @@ export function connectTicketEvents(handlers: TicketEventsHandlers): () => void 
         return;
       }
 
-      // Solo un intento fallido cambia el estado: el cierre rutinario al vencer el token no debe notarse en pantalla.
-      handlers.onConnectionChange(false);
-      retryTimer = setTimeout(() => void connect(attempt + 1), retryDelay(attempt));
+      retryLater();
       return;
     }
 
+    connectedAt = Date.now();
     handlers.onConnectionChange(true);
-    if (hasBeenLive || attempt > 0) {
+    if (needsResync) {
+      needsResync = false;
       handlers.onReconnected();
     }
-    hasBeenLive = true;
   }
 
   connection.on('MyTicketChanged', handlers.onTicketChanged);
   connection.onclose(() => {
-    if (!stopped) {
-      void connect();
+    if (stopped) {
+      return;
     }
+
+    if (Date.now() - connectedAt < stableConnectionMs) {
+      retryLater();
+      return;
+    }
+
+    failures = 0;
+    needsResync = true;
+    void connect();
   });
 
   void connect();

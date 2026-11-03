@@ -6,7 +6,7 @@ using MudBlazor;
 using MudBlazor.Services;
 
 // Para probarlo:
-//   docker compose -f deploy/compose.yaml up -d keycloak sqlserver
+//   docker compose -f deploy/compose.yaml up -d keycloak sqlserver redis
 //   dotnet run --project src/HelpDesk.Api --launch-profile http
 //   dotnet run --project src/HelpDesk.Admin        → https://localhost:7300 (pedro: agente, laura: supervisora)
 

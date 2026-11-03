@@ -16,16 +16,25 @@ public sealed class TicketEventsConnection : IAsyncDisposable
 {
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
 
+    // Una conexión que no llegó a durar esto cuenta como un intento fallido: el servidor la aceptó y la cerró enseguida. Pasa
+    // con Redis caído, porque no puede unirla a sus grupos. Sin esta regla, se reintentaría al instante, en bucle.
+    private static readonly TimeSpan StableConnection = TimeSpan.FromSeconds(30);
+
     private readonly HubConnection connection;
     private readonly CancellationTokenSource stopping = new();
+    private readonly TimeProvider clock;
     private readonly ILogger<TicketEventsConnection> logger;
     private int started;
+    private int failures;
+    private DateTimeOffset connectedAt;
 
     public TicketEventsConnection(
         IAccessTokenProvider accessTokens,
         IOptions<HelpDeskApiOptions> options,
+        TimeProvider clock,
         ILogger<TicketEventsConnection> logger)
     {
+        this.clock = clock;
         this.logger = logger;
 
         var hubUrl = new Uri(new Uri(options.Value.BaseUrl), "/hubs/tickets");
@@ -85,6 +94,7 @@ public sealed class TicketEventsConnection : IAsyncDisposable
     {
         if (!stopping.IsCancellationRequested)
         {
+            failures = clock.GetUtcNow() - connectedAt < StableConnection ? failures + 1 : 0;
             _ = KeepConnectedAsync(reconnecting: true);
         }
 
@@ -97,8 +107,15 @@ public sealed class TicketEventsConnection : IAsyncDisposable
     {
         try
         {
-            for (int attempt = 0; ; attempt++)
+            while (true)
             {
+                // Solo un intento fallido cambia el estado: el cierre rutinario al vencer el token no se nota en pantalla.
+                if (failures > 0)
+                {
+                    SetLive(false);
+                    await Task.Delay(RetryDelay(failures - 1), stopping.Token);
+                }
+
                 try
                 {
                     await connection.StartAsync(stopping.Token);
@@ -106,15 +123,13 @@ public sealed class TicketEventsConnection : IAsyncDisposable
                 }
                 catch (Exception exception) when (exception is not SessionEndedException && !stopping.IsCancellationRequested)
                 {
-                    logger.LogInformation("Sin conexión al hub de avisos (intento {Attempt}): {Error}", attempt + 1, exception.Message);
-
-                    // Solo un intento fallido cambia el estado: el cierre rutinario al vencer el token no se nota en pantalla.
-                    SetLive(false);
+                    failures++;
                     reconnecting = true;
-                    await Task.Delay(RetryDelay(attempt), stopping.Token);
+                    logger.LogInformation("Sin conexión al hub de avisos (intento {Attempt}): {Error}", failures, exception.Message);
                 }
             }
 
+            connectedAt = clock.GetUtcNow();
             SetLive(true);
 
             // SignalR no guarda lo que se envió durante el corte: las pantallas deben volver a preguntar.

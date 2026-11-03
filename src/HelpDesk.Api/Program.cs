@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using HelpDesk.Api.Caching;
 using HelpDesk.Api.Data;
 using HelpDesk.Api.Errors;
 using HelpDesk.Api.Features.Accounts;
@@ -15,6 +16,7 @@ using HelpDesk.Api.OpenApi;
 using HelpDesk.Api.Security;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
+using StackExchange.Redis;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -66,6 +68,9 @@ builder.Services.AddDbContextPool<HelpDeskDbContext>((provider, options) =>
     }
 });
 
+ConfigurationOptions? redis = RedisSettings.From(builder.Configuration);
+builder.Services.AddHelpDeskCaching(redis);  // output caching y HybridCache (memoria + Redis)
+
 builder.Services.AddFrontendCors();          // qué frontends de otro origen pueden leer las respuestas
 builder.Services.AddHelpDeskRateLimiting();  // límite por usuario y, más estricto, para login
 
@@ -75,7 +80,7 @@ builder.Services.AddCommentsFeature();
 builder.Services.AddAgentsFeature();
 builder.Services.AddDashboardFeature();
 builder.Services.AddPortalFeature();
-builder.Services.AddNotificationsFeature(ConfigureJson);
+builder.Services.AddNotificationsFeature(ConfigureJson, redis);
 builder.Services.AddSlaFeature();
 
 WebApplication app = builder.Build();
@@ -94,6 +99,7 @@ app.UseCors();                                // 4º: antes de autenticar, porqu
 app.UseAuthentication();                      // 5º: arma el usuario (ClaimsPrincipal) con la cookie o el token
 app.UseRateLimiter();                         // 6º: después de autenticar, para contar por usuario y no solo por IP
 app.UseAuthorization();                       // 7º: decide si ese usuario puede llegar al endpoint (401 / 403)
+app.UseOutputCache();                         // 8º: después de autorizar: lo guardado no se entrega a quien no puede verlo
 
 if (app.Environment.IsDevelopment())
 {

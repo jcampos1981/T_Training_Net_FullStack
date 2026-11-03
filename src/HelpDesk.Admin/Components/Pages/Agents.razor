@@ -38,7 +38,8 @@ else
 }
 
 @code {
-    private static readonly TimeSpan AutoRefreshDelay = TimeSpan.FromSeconds(5);
+    // Más que la caché de la API (GET /api/agents guarda su respuesta 5 s): si no, la recarga que dispara un aviso podría traer los datos de antes.
+    private static readonly TimeSpan AutoRefreshDelay = TimeSpan.FromSeconds(6);
 
     private List<AgentSummaryResponse>? agents;
 

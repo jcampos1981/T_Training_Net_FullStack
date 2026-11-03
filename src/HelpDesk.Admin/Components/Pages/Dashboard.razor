@@ -39,7 +39,8 @@ else
 }
 
 @code {
-    private static readonly TimeSpan AutoRefreshDelay = TimeSpan.FromSeconds(5);
+    // Más que la caché de la API (GET /api/dashboard guarda su resultado hasta 5 s): si no, la recarga que dispara un aviso podría traer los datos de antes.
+    private static readonly TimeSpan AutoRefreshDelay = TimeSpan.FromSeconds(6);
 
     private DashboardResponse? dashboard;
     private bool loading;

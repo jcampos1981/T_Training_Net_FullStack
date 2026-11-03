@@ -1,3 +1,4 @@
+using HelpDesk.Api.Caching;
 using HelpDesk.Api.Features.Accounts;
 using HelpDesk.Api.Features.Notifications;
 using HelpDesk.Api.Features.Tickets;
@@ -5,6 +6,7 @@ using HelpDesk.Api.Paging;
 using HelpDesk.Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 
 namespace HelpDesk.Api.Features.Agents;
 
@@ -28,6 +30,7 @@ public sealed class AgentsController : ControllerBase
     [Authorize(Policy = HelpDeskPolicies.Supervision)]
     [EndpointSummary("Lista los agentes con su carga de tickets (abiertos y totales). Solo supervisión.")]
     [ProducesResponseType<IReadOnlyList<AgentSummaryResponse>>(StatusCodes.Status200OK)]
+    [OutputCache(PolicyName = AgentSummaryCache.Policy)]
     public async Task<ActionResult<IReadOnlyList<AgentSummaryResponse>>> List(
         [FromServices] AgentQueries queries,
         CancellationToken cancellationToken)
@@ -69,6 +72,7 @@ public sealed class AgentsController : ControllerBase
         ReassignTicketsRequest request,
         [FromServices] ReassignTicketsHandler handler,
         [FromServices] ITicketNotifier notifier,
+        [FromServices] IOutputCacheStore outputCache,
         CancellationToken cancellationToken)
     {
         string toAgent = request.To.Trim();
@@ -80,6 +84,9 @@ public sealed class AgentsController : ControllerBase
         }
 
         ReassignTicketsResponse reassigned = await handler.HandleAsync(name, toAgent, cancellationToken);
+
+        // Quien reasigna vuelve a pedir la lista enseguida: debe ver el resultado, no lo guardado hace 4 segundos.
+        await outputCache.EvictByTagAsync(AgentSummaryCache.Tag, cancellationToken);
         await notifier.TicketsReassignedAsync(reassigned, User);
 
         return Ok(reassigned);
