@@ -12,7 +12,8 @@ namespace HelpDesk.Bff.Authentication;
 public sealed class BffCookieEvents(
     AccessTokenRefresher refresher,
     IOptions<KeycloakClientOptions> options,
-    TimeProvider clock) : CookieAuthenticationEvents
+    TimeProvider clock,
+    ILogger<BffCookieEvents> logger) : CookieAuthenticationEvents
 {
     private const string AccessToken = "access_token";
     private const string RefreshToken = "refresh_token";
@@ -30,7 +31,19 @@ public sealed class BffCookieEvents(
             return;
         }
 
-        RefreshedTokens? tokens = await refresher.RefreshAsync(refreshToken, context.HttpContext.RequestAborted);
+        CancellationToken aborted = context.HttpContext.RequestAborted;
+        RefreshedTokens? tokens;
+        try
+        {
+            tokens = await refresher.RefreshAsync(refreshToken, aborted);
+        }
+        catch (Exception exception) when (IsKeycloakOutage(exception, aborted))
+        {
+            // Que Keycloak no responda no es lo mismo que rechace la sesión: cerrarla sacaría a todos los usuarios por
+            // una caída de segundos. Se sigue con el token actual, y la próxima petición vuelve a intentar renovarlo.
+            logger.LogWarning(exception, "Keycloak no responde; la sesión sigue y se reintenta en la próxima petición.");
+            return;
+        }
 
         if (tokens is null)
         {
@@ -65,4 +78,10 @@ public sealed class BffCookieEvents(
 
     private bool IsAboutToExpire(string expiresAt) =>
         DateTimeOffset.Parse(expiresAt, CultureInfo.InvariantCulture) - clock.GetUtcNow() <= options.Value.RefreshBeforeExpiry;
+
+    // Sin red o 5xx (HttpRequestException), discovery document no disponible (InvalidOperationException) o tiempo de
+    // espera agotado. Si canceló el navegador al cerrar la pestaña, no es una caída.
+    private static bool IsKeycloakOutage(Exception exception, CancellationToken aborted) =>
+        exception is HttpRequestException or InvalidOperationException
+        || (exception is OperationCanceledException && !aborted.IsCancellationRequested);
 }

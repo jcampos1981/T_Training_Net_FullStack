@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -15,6 +16,7 @@ public sealed class AccessTokenRefresher(
     ILogger<AccessTokenRefresher> logger)
 {
     // null si Keycloak se niega: la sesión terminó allá (logout en otra pestaña, sesión vencida, usuario bloqueado).
+    // Si Keycloak está caído (5xx o sin red) lanza una excepción: eso no dice nada de la sesión, y se puede reintentar.
     public async Task<RefreshedTokens?> RefreshAsync(string refreshToken, CancellationToken cancellationToken)
     {
         // Las mismas opciones (y el mismo HttpClient) que usa el handler de OpenID Connect para el login.
@@ -30,17 +32,18 @@ public sealed class AccessTokenRefresher(
         });
 
         using HttpResponseMessage response = await oidc.Backchannel.PostAsync(configuration.TokenEndpoint, request, cancellationToken);
-        string body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        if (!response.IsSuccessStatusCode)
+        if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized)
         {
             logger.LogWarning("Keycloak no renovó el access token ({Status}); se cierra la sesión del BFF.", (int)response.StatusCode);
             return null;
         }
 
+        response.EnsureSuccessStatusCode();
+
         // OpenIdConnectMessage entiende la respuesta JSON del token endpoint (access_token, expires_in...).
         // Sin expires_in se toma como vencido: la próxima petición vuelve a renovar.
-        var tokens = new OpenIdConnectMessage(body);
+        var tokens = new OpenIdConnectMessage(await response.Content.ReadAsStringAsync(cancellationToken));
         int lifetimeSeconds = int.TryParse(tokens.ExpiresIn, NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds) ? seconds : 0;
         DateTimeOffset expiresAt = clock.GetUtcNow().AddSeconds(lifetimeSeconds);
 

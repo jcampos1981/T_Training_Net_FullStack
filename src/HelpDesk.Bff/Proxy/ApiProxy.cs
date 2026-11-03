@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authentication;
 using Yarp.ReverseProxy.Transforms;
@@ -9,6 +10,7 @@ namespace HelpDesk.Bff.Proxy;
 public static class ApiProxy
 {
     private const string AntiforgeryHeader = "X-CSRF";
+    private const string RetryAfterSeconds = "15";
 
     public static IServiceCollection AddApiProxy(this IServiceCollection services, IConfiguration configuration)
     {
@@ -34,10 +36,14 @@ public static class ApiProxy
         return services;
     }
 
-    // La ruta exige sesión ("AuthorizationPolicy": "default" en appsettings) y además el header X-CSRF.
+    // La ruta exige sesión ("AuthorizationPolicy": "default" en appsettings), el header X-CSRF y un token vigente.
     public static IEndpointRouteBuilder MapApiProxy(this IEndpointRouteBuilder app)
     {
-        app.MapReverseProxy(proxy => proxy.Use(RequireAntiforgeryHeaderAsync));
+        app.MapReverseProxy(proxy =>
+        {
+            proxy.Use(RequireAntiforgeryHeaderAsync);
+            proxy.Use(RequireLiveAccessTokenAsync);
+        });
         return app;
     }
 
@@ -53,6 +59,27 @@ public static class ApiProxy
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Falta el header X-CSRF",
                 detail: "Las llamadas a /api desde el frontend deben llevar el header X-CSRF: 1.")
+                .ExecuteAsync(context);
+            return;
+        }
+
+        await next();
+    }
+
+    // Si el token ya venció al llegar aquí, BffCookieEvents no pudo renovarlo: Keycloak no responde. Con ese token la
+    // API respondería 401, y el frontend creería que la sesión terminó. Es una falla pasajera, y se dice como tal: 503.
+    private static async Task RequireLiveAccessTokenAsync(HttpContext context, Func<Task> next)
+    {
+        string? expiresAt = await context.GetTokenAsync("expires_at");
+        TimeProvider clock = context.RequestServices.GetRequiredService<TimeProvider>();
+
+        if (expiresAt is not null && DateTimeOffset.Parse(expiresAt, CultureInfo.InvariantCulture) <= clock.GetUtcNow())
+        {
+            context.Response.Headers.RetryAfter = RetryAfterSeconds;
+            await TypedResults.Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "No se pudo renovar la sesión",
+                detail: "El servicio de inicio de sesión no responde. Tu sesión sigue activa: vuelve a intentar en unos segundos.")
                 .ExecuteAsync(context);
             return;
         }
