@@ -4,6 +4,9 @@
 
 <PageTitle>Dashboard · HelpDesk</PageTitle>
 
+@* Sin agrupar, cada cambio de cada agente sería una consulta de agregación por cada dashboard abierto. *@
+<LiveRefresh GroupFor="AutoRefreshDelay" OnChanged="LoadAsync" />
+
 <div class="d-flex align-center gap-3 mb-3 flex-wrap">
     <MudText Typo="Typo.h4" HtmlTag="h1">Dashboard</MudText>
     <MudSpacer />
@@ -36,6 +39,8 @@ else
 }
 
 @code {
+    private static readonly TimeSpan AutoRefreshDelay = TimeSpan.FromSeconds(5);
+
     private DashboardResponse? dashboard;
     private bool loading;
 

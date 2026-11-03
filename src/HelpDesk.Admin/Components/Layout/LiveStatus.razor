@@ -1,0 +1,21 @@
+@implements IDisposable
+@inject TicketEventsConnection Events
+
+@* role="status" siempre presente: un lector de pantalla anuncia lo que aparece dentro, sin interrumpir. *@
+<span role="status">
+    @if (!Events.IsLive)
+    {
+        <span class="d-inline-flex align-center mr-4" data-testid="live-offline">
+            <MudIcon Icon="@Icons.Material.Filled.CloudOff" Size="Size.Small" Class="mr-1" />
+            Sin conexión en vivo
+        </span>
+    }
+</span>
+
+@code {
+    protected override void OnInitialized() => Events.LiveStateChanged += HandleChange;
+
+    private void HandleChange() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Events.LiveStateChanged -= HandleChange;
+}

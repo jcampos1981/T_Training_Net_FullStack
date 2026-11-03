@@ -26,6 +26,7 @@ export default defineConfig({
     strictPort: true, // si el puerto está ocupado, falla en vez de usar otro (las redirect_uri dependen de él)
     proxy: {
       '/api': bff,                      // la API, a través del BFF (que agrega el token)
+      '/hubs': { ...bff, ws: true },    // los avisos en vivo: también reenvía el WebSocket
       '/bff': bff,                      // login, usuario actual y logout
       '/signin-oidc': bff,              // Keycloak vuelve aquí después del login
       '/signout-callback-oidc': bff,    // y aquí después del logout

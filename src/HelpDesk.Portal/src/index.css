@@ -145,3 +145,49 @@ a { color: var(--accent); }
 .form-summary { margin: 0; color: var(--danger-text); font-weight: 600; }
 
 .form-actions { display: flex; align-items: center; gap: 1rem; }
+
+/* Avisos en vivo */
+.live-offline {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.notices {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 10;
+  display: grid;
+  gap: 0.5rem;
+  width: min(24rem, calc(100vw - 2rem));
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+}
+
+.notice span { flex: 1; overflow-wrap: anywhere; }
+
+.notice-close {
+  padding: 0 0.25rem;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}

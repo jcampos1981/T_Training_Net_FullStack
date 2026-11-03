@@ -1,10 +1,13 @@
 @page "/tickets/{Id:int}"
+@implements IDisposable
 @inject HelpDeskApiClient Client
 @inject ISnackbar Snackbar
 
 <PageTitle>@(ticket?.Code ?? "Ticket") · HelpDesk</PageTitle>
 
 <MudLink Href="/tickets" Class="d-block mb-3">← Tickets</MudLink>
+
+<LiveRefresh TicketId="Id" OnChanged="RefreshAsync" />
 
 @if (unavailable is not null)
 {
@@ -21,8 +24,15 @@ else
 
     @if (editing && !IsClosed)
     {
+        @if (changedWhileEditing)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-3" data-testid="changed-while-editing">
+                Alguien cambió este ticket mientras lo editas. Lo que escribiste sigue aquí; al guardar podrás ver qué cambió y decidir.
+            </MudAlert>
+        }
+
         <MudPaper Outlined="true" Elevation="0" Class="pa-4 mb-4">
-            <TicketEditForm Ticket="ticket" OnSaved="HandleSaved" OnReloaded="HandleReloaded" OnCancelled="() => editing = false" />
+            <TicketEditForm Ticket="ticket" OnSaved="HandleSaved" OnReloaded="HandleReloaded" OnCancelled="StopEditing" />
         </MudPaper>
     }
     else
@@ -66,18 +76,38 @@ else
     private IReadOnlyList<CommentResponse> conversation = [];
     private ApiErrorMessage? unavailable;
     private bool editing;
+    private bool changedWhileEditing;
+    private CancellationTokenSource? loadCancellation;
 
     private bool IsClosed => ticket?.Status == TicketStatus.Closed;
 
     protected override async Task OnParametersSetAsync()
     {
         ticket = null;
+        StopEditing();
+        await RefreshAsync();
+    }
+
+    // También la llama LiveRefresh cuando llega un aviso de este ticket. Por eso los errores se manejan aquí: si lo
+    // eliminaron o se lo quitaron a este agente, la pantalla debe decirlo en vez de seguir mostrándolo.
+    private async Task RefreshAsync()
+    {
         unavailable = null;
-        editing = false;
+
+        // Si llega otro aviso o cambia el ticket mientras esto carga, la respuesta anterior ya no interesa. Sin esto, la
+        // de un ticket podría llegar última y quedar en la pantalla de otro.
+        loadCancellation?.Cancel();
+        loadCancellation?.Dispose();
+        loadCancellation = new CancellationTokenSource();
+        CancellationToken cancellation = loadCancellation.Token;
 
         try
         {
-            await LoadAsync();
+            await LoadAsync(cancellation);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // La canceló una carga más nueva, o el usuario salió de la pantalla: no hay nada que mostrar.
         }
         catch (ApiException error) when (error.ResponseStatusCode == StatusCodes.Status404NotFound)
         {
@@ -90,15 +120,29 @@ else
         }
     }
 
-    private async Task LoadAsync()
+    private async Task LoadAsync(CancellationToken cancellation)
     {
         // Las dos llamadas salen en paralelo. Si el token está por vencer, SessionAccessTokens lo renueva una sola vez.
         var requests = Client.Api.Tickets[Id];
-        Task<TicketResponse?> ticketRequest = requests.GetAsync();
-        Task<List<CommentResponse>?> commentsRequest = requests.Comments.GetAsync();
+        Task<TicketResponse?> ticketRequest = requests.GetAsync(cancellationToken: cancellation);
+        Task<List<CommentResponse>?> commentsRequest = requests.Comments.GetAsync(cancellationToken: cancellation);
         await Task.WhenAll(ticketRequest, commentsRequest);
 
-        ticket = await ticketRequest;
+        cancellation.ThrowIfCancellationRequested();
+
+        TicketResponse? latest = await ticketRequest;
+
+        // El formulario abierto no se toca: lo que el usuario escribe no puede desaparecer porque otro guardó. Solo se le
+        // avisa, y si guarda con la versión antigua, la concurrencia optimista lo lleva a elegir.
+        if (editing)
+        {
+            changedWhileEditing = latest?.Version != ticket?.Version;
+        }
+        else
+        {
+            ticket = latest;
+        }
+
         // La API los devuelve del más reciente al más antiguo; una conversación se lee al revés.
         conversation = [.. Enumerable.Reverse(await commentsRequest ?? [])];
     }
@@ -107,18 +151,41 @@ else
     private void HandleSaved(TicketResponse saved)
     {
         ticket = saved;
-        editing = false;
+        StopEditing();
         Snackbar.Add("Cambios guardados.", Severity.Success);
     }
 
-    private void HandleReloaded(TicketResponse latest) => ticket = latest;
+    private void HandleReloaded(TicketResponse latest)
+    {
+        ticket = latest;
+        changedWhileEditing = false;
+    }
 
-    // Se agrega el comentario que devolvió el POST, sin volver a pedir la conversación completa.
-    private void HandleCommentAdded(CommentResponse added) => conversation = [.. conversation, added];
+    private void StopEditing()
+    {
+        editing = false;
+        changedWhileEditing = false;
+    }
+
+    // Se agrega el comentario que devolvió el POST, sin volver a pedir la conversación completa. Puede que ya esté: el
+    // aviso en vivo de este mismo comentario pudo adelantarse a la respuesta. Repetido, rompería el @key de la lista.
+    private void HandleCommentAdded(CommentResponse added)
+    {
+        if (conversation.All(comment => comment.Id != added.Id))
+        {
+            conversation = [.. conversation, added];
+        }
+    }
 
     private async Task HandleCommentRejectedAsync(string reason)
     {
         Snackbar.Add(reason, Severity.Warning);
-        await LoadAsync();
+        await RefreshAsync();
+    }
+
+    public void Dispose()
+    {
+        loadCancellation?.Cancel();
+        loadCancellation?.Dispose();
     }
 }

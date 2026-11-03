@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using HelpDesk.Admin.Api.Generated;
 using HelpDesk.Admin.Authentication;
+using HelpDesk.Admin.Realtime;
 using Microsoft.Extensions.Options;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Kiota.Http.HttpClientLibrary;
@@ -44,6 +45,8 @@ public static class HelpDeskApiSetup
 
             return new HelpDeskApiClient(adapter);
         });
+
+        services.AddScoped<TicketEventsConnection>();
 
         return services;
     }

@@ -1,0 +1,98 @@
+@implements IDisposable
+@inject TicketEventsConnection Events
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider Authentication
+
+@* No dibuja nada: muestra los avisos en vivo como snackbars, que siguen en pantalla aunque el usuario navegue. *@
+
+@code {
+    private const int NoticeDurationMilliseconds = 10_000;
+
+    private string me = string.Empty;
+    private bool supervises;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ClaimsPrincipal user = (await Authentication.GetAuthenticationStateAsync()).User;
+        me = user.Identity?.Name ?? string.Empty;
+        supervises = user.IsInRole(AdminRoles.Supervisor) || user.IsInRole(AdminRoles.Admin);
+
+        Events.TicketChanged += HandleTicketChanged;
+        Events.TicketsReassigned += HandleTicketsReassigned;
+    }
+
+    private void HandleTicketChanged(TicketEvent ticketEvent)
+    {
+        if (DeservesNotice(ticketEvent))
+        {
+            _ = InvokeAsync(() => Show(TextOf(ticketEvent), ticketEvent.Kind is TicketEventKind.Deleted ? null : ticketEvent.TicketId));
+        }
+    }
+
+    private void HandleTicketsReassigned(TicketsReassignedEvent reassigned)
+    {
+        if (!IsMe(reassigned.Actor) && !supervises)
+        {
+            string text = IsMe(reassigned.To)
+                ? $"{reassigned.Actor} te asignó {reassigned.Tickets:N0} tickets de {reassigned.From}."
+                : $"{reassigned.Actor} reasignó {reassigned.Tickets:N0} de tus tickets a {reassigned.To}.";
+
+            _ = InvokeAsync(() => Show(text, ticketId: null));
+        }
+    }
+
+    // Un agente solo recibe avisos de sus tickets: todo le interesa. Supervisión los recibe todos, y un aviso por cada
+    // cambio de la empresa sería ruido: solo ve los que le tocan a ella, y los tickets nuevos que nadie atiende aún.
+    private bool DeservesNotice(TicketEvent ticketEvent)
+    {
+        if (IsMe(ticketEvent.Actor))
+        {
+            return false;
+        }
+
+        return !supervises
+            || IsMe(ticketEvent.AssignedTo)
+            || ticketEvent is { Kind: TicketEventKind.Created, AssignedTo: null };
+    }
+
+    // Sin rama "_", igual que en TicketLabels: un tipo de aviso nuevo no compila hasta tener su texto.
+#pragma warning disable CS8524
+    private string TextOf(TicketEvent ticketEvent) => ticketEvent.Kind switch
+    {
+        TicketEventKind.Created => $"Ticket nuevo {ticketEvent.Code}: {ticketEvent.Title}",
+        TicketEventKind.Updated => $"{ticketEvent.Actor} actualizó {ticketEvent.Code}: {ticketEvent.Title}",
+        TicketEventKind.Reassigned when IsMe(ticketEvent.AssignedTo) => $"{ticketEvent.Actor} te asignó {ticketEvent.Code}: {ticketEvent.Title}",
+        TicketEventKind.Reassigned => $"{ticketEvent.Actor} reasignó {ticketEvent.Code} a {ticketEvent.AssignedTo ?? "nadie"}.",
+        TicketEventKind.Commented => $"{ticketEvent.Actor} comentó en {ticketEvent.Code}: {ticketEvent.Title}",
+        TicketEventKind.Deleted => $"{ticketEvent.Actor} eliminó {ticketEvent.Code}: {ticketEvent.Title}"
+    };
+#pragma warning restore CS8524
+
+    private void Show(string text, int? ticketId) =>
+        Snackbar.Add(text, Severity.Info, options =>
+        {
+            // Con una acción ("Ver"), MudBlazor lo deja en pantalla hasta que alguien lo cierre: en un turno con
+            // movimiento se acumularían. La lista y el detalle ya están al día; esto solo avisa.
+            options.RequireInteraction = false;
+            options.VisibleStateDuration = NoticeDurationMilliseconds;
+
+            if (ticketId is not null)
+            {
+                options.Action = "Ver";
+                options.OnClick = _ =>
+                {
+                    Navigation.NavigateTo($"/tickets/{ticketId}");
+                    return Task.CompletedTask;
+                };
+            }
+        });
+
+    private bool IsMe(string? name) => string.Equals(name, me, StringComparison.OrdinalIgnoreCase);
+
+    public void Dispose()
+    {
+        Events.TicketChanged -= HandleTicketChanged;
+        Events.TicketsReassigned -= HandleTicketsReassigned;
+    }
+}

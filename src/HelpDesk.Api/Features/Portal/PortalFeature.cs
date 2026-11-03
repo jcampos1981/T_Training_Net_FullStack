@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using HelpDesk.Api.Features.Accounts;
 using HelpDesk.Api.Features.Comments;
+using HelpDesk.Api.Features.Notifications;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Paging;
 using HelpDesk.Domain;
@@ -81,9 +82,11 @@ public static class PortalFeature
         OpenTicketRequest request,
         ClaimsPrincipal user,
         OpenTicketHandler handler,
+        ITicketNotifier notifier,
         CancellationToken cancellationToken)
     {
         Ticket ticket = await handler.HandleAsync(request, CustomerEmail(user), user.AuthorName, cancellationToken);
+        await notifier.TicketChangedAsync(ticket, TicketEventKind.Created, user);
 
         return TypedResults.CreatedAtRoute(PortalTicketResponse.From(ticket), nameof(GetMyTicket), new { id = ticket.Id.Value });
     }
@@ -108,6 +111,7 @@ public static class PortalFeature
         ClaimsPrincipal user,
         ITicketRepository repository,
         ICommentRepository comments,
+        ITicketNotifier notifier,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -120,6 +124,7 @@ public static class PortalFeature
         // Si el ticket está cerrado, CreateComment lanza DomainRuleException → 409, igual que para el equipo.
         TicketComment saved = await comments.AddAsync(
             ticket.CreateComment(user.AuthorName, request.Body, clock.GetUtcNow()), cancellationToken);
+        await notifier.TicketChangedAsync(ticket, TicketEventKind.Commented, user);
 
         return TypedResults.Created($"/api/portal/tickets/{id}/comments", CommentResponse.From(saved));
     }

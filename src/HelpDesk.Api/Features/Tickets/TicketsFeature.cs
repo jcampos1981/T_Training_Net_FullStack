@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using HelpDesk.Api.Features.Accounts;
+using HelpDesk.Api.Features.Notifications;
 using HelpDesk.Api.Paging;
 using HelpDesk.Domain;
 using Microsoft.AspNetCore.Authorization;
@@ -127,6 +128,7 @@ public static class TicketsFeature
         ClaimsPrincipal user,
         IAuthorizationService authorization,
         ITicketRepository repository,
+        ITicketNotifier notifier,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -147,6 +149,7 @@ public static class TicketsFeature
         }
 
         await repository.AddAsync(ticket, cancellationToken);
+        await notifier.TicketChangedAsync(ticket, TicketEventKind.Created, user);
 
         // 201 Created + cabecera Location apuntando a GET /api/tickets/{id}
         return TypedResults.CreatedAtRoute(ticket.ToResponse(), nameof(GetTicket), new { id = ticket.Id.Value });
@@ -158,6 +161,7 @@ public static class TicketsFeature
         ClaimsPrincipal user,
         IAuthorizationService authorization,
         ITicketRepository repository,
+        ITicketNotifier notifier,
         CancellationToken cancellationToken)
     {
         Ticket? current = await repository.FindAsync(new TicketId(id), cancellationToken);
@@ -184,18 +188,44 @@ public static class TicketsFeature
         // - el ticket está cerrado (regla de negocio, DomainRuleException)
         // - otro usuario lo guardó primero (concurrencia, DbUpdateConcurrencyException)
         Ticket changed = current.Update(request.Title, request.Priority, request.Status, request.AssignedTo);
+
+        // Antes de guardar: UpdateAsync adjunta "current" a EF, que le escribe los valores nuevos aunque sea un record
+        // inmutable. Después de esa línea, "current" ya no dice cómo estaba el ticket.
+        TicketEventKind kind = KindOfChange(current, changed);
+        string? previousAgent = current.AssignedTo;
+
         Ticket saved = await repository.UpdateAsync(current, changed, request.ExpectedVersion(), cancellationToken);
+
+        await notifier.TicketChangedAsync(saved, kind, user, previousAgent);
 
         return TypedResults.Ok(saved.ToResponse());
     }
 
+    // "Reasignado" solo si no cambió nada más: al cliente no se le avisa de eso, pero sí de un cambio de estado.
+    private static TicketEventKind KindOfChange(Ticket before, Ticket after)
+    {
+        bool visibleToCustomer = before.Title != after.Title || before.Priority != after.Priority || before.Status != after.Status;
+
+        return !visibleToCustomer && before.AssignedTo != after.AssignedTo ? TicketEventKind.Reassigned : TicketEventKind.Updated;
+    }
+
     private static async Task<Results<NoContent, NotFound>> DeleteTicket(
         int id,
+        ClaimsPrincipal user,
         ITicketRepository repository,
+        ITicketNotifier notifier,
         CancellationToken cancellationToken)
     {
-        bool deleted = await repository.DeleteAsync(new TicketId(id), cancellationToken);
+        // Se lee antes de borrarlo: después ya no se sabría a quién avisarle.
+        Ticket? ticket = await repository.FindAsync(new TicketId(id), cancellationToken);
 
-        return deleted ? TypedResults.NoContent() : TypedResults.NotFound();
+        if (ticket is null || !await repository.DeleteAsync(ticket.Id, cancellationToken))
+        {
+            return TypedResults.NotFound();
+        }
+
+        await notifier.TicketChangedAsync(ticket, TicketEventKind.Deleted, user);
+
+        return TypedResults.NoContent();
     }
 }

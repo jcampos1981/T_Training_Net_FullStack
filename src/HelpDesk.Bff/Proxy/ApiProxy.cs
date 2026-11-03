@@ -5,7 +5,7 @@ using Yarp.ReverseProxy.Transforms;
 
 namespace HelpDesk.Bff.Proxy;
 
-// Reenvía /api/... a HelpDesk.Api con YARP (el reverse proxy de Microsoft). La ruta y el destino están en
+// Reenvía /api/... y /hubs/... a HelpDesk.Api con YARP (el reverse proxy de Microsoft). Las rutas y el destino están en
 // appsettings ("ReverseProxy"). Para el navegador, la API y el BFF son el mismo origen: no hace falta CORS.
 public static class ApiProxy
 {
@@ -51,9 +51,13 @@ public static class ApiProxy
     // lo frena si la página es de otro SITIO, pero "sitio" ignora el puerto: cualquier app en localhost:xxxx, o en
     // otro subdominio de la empresa, cuenta como el mismo sitio. Un header propio, en cambio, solo se puede agregar
     // con fetch, y desde otro ORIGEN eso exige permiso CORS, que el BFF no da a nadie.
+    //
+    // Un WebSocket es el caso contrario: el navegador no deja agregarle headers, y además no pasa por CORS. A cambio lleva
+    // Origin, que escribe el navegador y JavaScript no puede cambiar. Sin revisarlo, cualquier página del mismo sitio
+    // podría abrir el hub con la cookie del usuario y escuchar sus avisos (Cross-Site WebSocket Hijacking).
     private static async Task RequireAntiforgeryHeaderAsync(HttpContext context, Func<Task> next)
     {
-        if (context.Request.Headers[AntiforgeryHeader] != "1")
+        if (context.Request.Headers[AntiforgeryHeader] != "1" && !ComesFromThisOrigin(context.Request))
         {
             await TypedResults.Problem(
                 statusCode: StatusCodes.Status400BadRequest,
@@ -65,6 +69,12 @@ public static class ApiProxy
 
         await next();
     }
+
+    // Se compara el host y el puerto, no el esquema: detrás de un proxy puede variar (Vite reenvía el WebSocket con
+    // X-Forwarded-Proto: ws, y Origin dice http). En un mismo host y puerto no hay otra aplicación que pueda atacar.
+    private static bool ComesFromThisOrigin(HttpRequest request) =>
+        Uri.TryCreate(request.Headers.Origin, UriKind.Absolute, out Uri? origin)
+        && string.Equals(origin.Authority, request.Host.Value, StringComparison.OrdinalIgnoreCase);
 
     // Si el token ya venció al llegar aquí, BffCookieEvents no pudo renovarlo: Keycloak no responde. Con ese token la
     // API respondería 401, y el frontend creería que la sesión terminó. Es una falla pasajera, y se dice como tal: 503.

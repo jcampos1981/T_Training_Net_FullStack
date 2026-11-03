@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using HelpDesk.Api.Features.Accounts;
+using HelpDesk.Api.Features.Notifications;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Domain;
 using Microsoft.AspNetCore.Authorization;
@@ -101,6 +102,7 @@ public static class CommentsFeature
         IAuthorizationService authorization,
         ITicketRepository tickets,
         ICommentRepository comments,
+        ITicketNotifier notifier,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -119,6 +121,7 @@ public static class CommentsFeature
         // Si el ticket está cerrado, CreateComment lanza DomainRuleException → 409.
         TicketComment comment = ticket.CreateComment(user.AuthorName, request.Body, clock.GetUtcNow());
         TicketComment saved = await comments.AddAsync(comment, cancellationToken);
+        await notifier.TicketChangedAsync(ticket, TicketEventKind.Commented, user);
 
         return TypedResults.CreatedAtRoute(
             CommentResponse.From(saved),

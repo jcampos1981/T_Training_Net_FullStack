@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { $api, hasStatus } from '../api/client';
 import type { components } from '../api/schema';
 
@@ -47,6 +47,16 @@ export function useTicket(id: number) {
 
 export function useConversation(ticketId: number) {
   return useQuery(conversationQuery(ticketId));
+}
+
+// Un aviso en vivo dijo que este ticket cambió. Solo se vuelve a pedir lo que esté en pantalla; lo demás queda marcado
+// como desactualizado y se pedirá cuando se muestre.
+export async function refreshTicketData(queryClient: QueryClient, ticketId: number): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: myTicketsKey }),
+    queryClient.invalidateQueries({ queryKey: ticketQuery(ticketId).queryKey }),
+    queryClient.invalidateQueries({ queryKey: conversationQuery(ticketId).queryKey }),
+  ]);
 }
 
 export function useOpenTicket() {

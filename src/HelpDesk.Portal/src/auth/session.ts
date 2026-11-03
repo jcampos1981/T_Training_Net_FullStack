@@ -10,7 +10,7 @@ export interface BffUser {
 export const sessionQueryKey = ['bff', 'user'] as const;
 
 // La app no ve tokens ni sabe nada de OpenID Connect: le pregunta al BFF si hay sesión.
-async function fetchSession(): Promise<BffUser | null> {
+export async function fetchSession(): Promise<BffUser | null> {
   const response = await fetch('/bff/user');
 
   if (response.status === 401) {

@@ -6,6 +6,8 @@
 
 <PageTitle>Agentes · HelpDesk</PageTitle>
 
+<LiveRefresh GroupFor="AutoRefreshDelay" OnChanged="LoadAsync" />
+
 <MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">Agentes</MudText>
 
 @if (agents is null)
@@ -36,6 +38,8 @@ else
 }
 
 @code {
+    private static readonly TimeSpan AutoRefreshDelay = TimeSpan.FromSeconds(5);
+
     private List<AgentSummaryResponse>? agents;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();

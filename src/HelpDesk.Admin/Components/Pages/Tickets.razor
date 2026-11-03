@@ -10,6 +10,20 @@
 
 <TicketFilters Value="filters" ValueChanged="ApplyFilters" />
 
+<LiveRefresh OnChanged="() => hasChanges = true" />
+
+@* Se avisa y no se recarga solo: las filas no se mueven bajo el cursor, y una lista con muchos cambios no genera
+   consultas sin que nadie las haya pedido. *@
+<div role="status">
+    @if (hasChanges)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3" data-testid="list-changes">
+            Hay cambios en los tickets.
+            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="ReloadAsync">Actualizar</MudButton>
+        </MudAlert>
+    }
+</div>
+
 @if (tickets is null)
 {
     <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
@@ -70,6 +84,7 @@ else
     private int? nextAfter;
     private bool loadingMore;
     private CancellationTokenSource? loadCancellation;
+    private bool hasChanges;
 
     // Ciclo de vida: OnInitialized corre una sola vez, y OnParametersSet cada vez que cambian los parámetros. Al cambiar
     // un filtro Blazor reutiliza esta misma instancia, así que cargar en OnInitialized dejaría la lista antigua.
@@ -83,6 +98,12 @@ else
         }
 
         filters = requested;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        hasChanges = false;
         tickets = null;
         nextAfter = null;
         await LoadPageAsync(after: 0);

@@ -1,0 +1,76 @@
+@implements IDisposable
+@inject TicketEventsConnection Events
+
+@* No dibuja nada. Le dice a la pantalla cuándo volver a pedir sus datos, y resuelve lo que se repetiría en cada una:
+   volver al hilo del circuito, no solapar recargas, agrupar ráfagas de avisos y dejar de escuchar al salir. *@
+
+@code {
+    [Parameter, EditorRequired]
+    public EventCallback OnChanged { get; set; }
+
+    // Solo los cambios de este ticket. Sin valor, cualquiera.
+    [Parameter]
+    public int? TicketId { get; set; }
+
+    // Cuánto esperar antes de avisar. Una ráfaga de cambios queda en una sola recarga.
+    [Parameter]
+    public TimeSpan GroupFor { get; set; }
+
+    private readonly CancellationTokenSource disposed = new();
+    private bool refreshing;
+    private bool changedAgain;
+
+    protected override void OnInitialized() => Events.TicketsChanged += HandleChange;
+
+    // Llega en un hilo de SignalR: InvokeAsync vuelve al del circuito, y desde ahí no hay dos cosas ejecutándose a la vez.
+    private void HandleChange(int? ticketId) => _ = InvokeAsync(() => RefreshAsync(ticketId));
+
+    private async Task RefreshAsync(int? changedTicket)
+    {
+        // null: pueden ser varios tickets, y este podría ser uno de ellos.
+        if (TicketId is not null && changedTicket is not null && changedTicket != TicketId)
+        {
+            return;
+        }
+
+        if (refreshing)
+        {
+            changedAgain = true;
+            return;
+        }
+
+        refreshing = true;
+        try
+        {
+            // Una recarga a la vez: si dos se cruzaran, la respuesta más antigua podría llegar última y quedar en pantalla.
+            do
+            {
+                await Task.Delay(GroupFor, disposed.Token);
+                changedAgain = false;
+                await OnChanged.InvokeAsync();
+            }
+            while (changedAgain);
+        }
+        catch (OperationCanceledException) when (disposed.IsCancellationRequested)
+        {
+            // El usuario salió de la pantalla.
+        }
+        catch (Exception exception)
+        {
+            // Sin esto, el error se perdería en silencio: nadie espera esta tarea. Así llega a ApiErrorBoundary.
+            await DispatchExceptionAsync(exception);
+        }
+        finally
+        {
+            refreshing = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        // Sin esta línea, el servicio (que vive lo que el circuito) mantendría viva esta pantalla y seguiría recargándola.
+        Events.TicketsChanged -= HandleChange;
+        disposed.Cancel();
+        disposed.Dispose();
+    }
+}

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link, Outlet, ScrollRestoration } from 'react-router';
 import { $api } from '../api/client';
 import { loginUrl, useSession } from '../auth/session';
+import { LiveUpdates } from '../realtime/LiveUpdates';
 import { ErrorMessage } from './ErrorMessage';
 
 // Marco común de todas las pantallas: encabezado con el usuario, y el contenido según el estado de la sesión.
@@ -71,5 +72,10 @@ function CustomerOnly({ children }: { children: ReactNode }) {
     );
   }
 
-  return children;
+  return (
+    <>
+      <LiveUpdates />
+      {children}
+    </>
+  );
 }

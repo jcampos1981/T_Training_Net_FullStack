@@ -23,7 +23,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto);
 builder.Services.AddBffAuthentication(); // login con Keycloak y sesión en una cookie
 builder.Services.AddAuthorization();
-builder.Services.AddApiProxy(builder.Configuration); // /api/... → HelpDesk.Api, con el access token
+builder.Services.AddApiProxy(builder.Configuration); // /api/... y /hubs/... → HelpDesk.Api, con el access token
 
 WebApplication app = builder.Build();
 
@@ -37,7 +37,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapBffEndpoints();     // /bff/login, /bff/user, /bff/logout
-app.MapApiProxy();         // /api/...
+app.MapApiProxy();         // /api/... y /hubs/...
 app.MapFrontendFallback(); // todo lo demás es una pantalla de React: index.html
 
 app.Run();

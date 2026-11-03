@@ -1,4 +1,5 @@
 using HelpDesk.Api.Features.Accounts;
+using HelpDesk.Api.Features.Notifications;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Paging;
 using HelpDesk.Domain;
@@ -66,6 +67,7 @@ public sealed class AgentsController : ControllerBase
         string name,
         ReassignTicketsRequest request,
         [FromServices] ReassignTicketsHandler handler,
+        [FromServices] ITicketNotifier notifier,
         CancellationToken cancellationToken)
     {
         string toAgent = request.To.Trim();
@@ -76,6 +78,9 @@ public sealed class AgentsController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        return Ok(await handler.HandleAsync(name, toAgent, cancellationToken));
+        ReassignTicketsResponse reassigned = await handler.HandleAsync(name, toAgent, cancellationToken);
+        await notifier.TicketsReassignedAsync(reassigned, User);
+
+        return Ok(reassigned);
     }
 }
