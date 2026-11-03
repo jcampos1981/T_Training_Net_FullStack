@@ -8,6 +8,7 @@ using HelpDesk.Api.Features.Comments;
 using HelpDesk.Api.Features.Dashboard;
 using HelpDesk.Api.Features.Notifications;
 using HelpDesk.Api.Features.Portal;
+using HelpDesk.Api.Features.Sla;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Middleware;
 using HelpDesk.Api.OpenApi;
@@ -75,6 +76,7 @@ builder.Services.AddAgentsFeature();
 builder.Services.AddDashboardFeature();
 builder.Services.AddPortalFeature();
 builder.Services.AddNotificationsFeature(ConfigureJson);
+builder.Services.AddSlaFeature();
 
 WebApplication app = builder.Build();
 
@@ -107,6 +109,7 @@ app.MapCommentsFeature(); // Minimal APIs (recurso anidado de tickets)
 app.MapDashboardFeature(); // Minimal API con Dapper
 app.MapPortalFeature();    // portal del cliente: /api/portal/...
 app.MapNotificationsFeature(); // avisos en vivo: /hubs/tickets (SignalR)
+app.MapSlaFeature();      // alertas de SLA: /api/sla/alerts
 app.MapControllers();     // Controllers (AgentsController)
 
 app.Run();

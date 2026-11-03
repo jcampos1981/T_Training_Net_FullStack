@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sla/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Alertas de SLA de tickets abiertos, las más recientes primero (keyset: ?after=&pageSize=). Un agente solo ve las suyas. */
+        get: operations["ListSlaAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/register": {
         parameters: {
             query?: never;
@@ -910,6 +927,11 @@ export interface components {
             /** Format: int32 */
             nextAfter: null | number;
         };
+        CursorPageOfSlaAlertResponse: {
+            items: components["schemas"]["SlaAlertResponse"][];
+            /** Format: int32 */
+            nextAfter: null | number;
+        };
         CursorPageOfTicketActivityResponse: {
             items: components["schemas"]["TicketActivityResponse"][];
             /** Format: int32 */
@@ -1012,6 +1034,24 @@ export interface components {
             resetCode: string;
             newPassword: string;
         };
+        SlaAlertResponse: {
+            /** Format: int32 */
+            id: number;
+            /** Format: int32 */
+            ticketId: number;
+            code: string;
+            title: string;
+            priority: components["schemas"]["TicketPriority"];
+            status: components["schemas"]["TicketStatus"];
+            assignedTo: null | string;
+            level: components["schemas"]["SlaState"];
+            /** Format: date-time */
+            deadline: string;
+            /** Format: date-time */
+            raisedAt: string;
+        };
+        /** @enum {unknown} */
+        SlaState: "OnTrack" | "AtRisk" | "Breached" | "Closed";
         StatusCount: {
             status: string;
             /** Format: int32 */
@@ -1040,6 +1080,9 @@ export interface components {
             assignedTo: null | string;
             version: string;
             requestedBy: null | string;
+            slaState: components["schemas"]["SlaState"];
+            /** Format: date-time */
+            slaDeadline: string;
         };
         /** @enum {unknown} */
         TicketStatus: "Open" | "InProgress" | "Resolved" | "Closed";
@@ -1121,6 +1164,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    ListSlaAlerts: {
+        parameters: {
+            query?: {
+                After?: number;
+                PageSize?: number;
+                level?: components["schemas"]["SlaState"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPageOfSlaAlertResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
             /** @description Unauthorized */

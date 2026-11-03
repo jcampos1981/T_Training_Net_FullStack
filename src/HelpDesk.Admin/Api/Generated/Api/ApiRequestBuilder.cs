@@ -3,6 +3,7 @@
 using HelpDesk.Admin.Api.Generated.Api.Agents;
 using HelpDesk.Admin.Api.Generated.Api.Dashboard;
 using HelpDesk.Admin.Api.Generated.Api.Me;
+using HelpDesk.Admin.Api.Generated.Api.Sla;
 using HelpDesk.Admin.Api.Generated.Api.Tickets;
 using Microsoft.Kiota.Abstractions.Extensions;
 using Microsoft.Kiota.Abstractions;
@@ -32,6 +33,11 @@ namespace HelpDesk.Admin.Api.Generated.Api
         public global::HelpDesk.Admin.Api.Generated.Api.Me.MeRequestBuilder Me
         {
             get => new global::HelpDesk.Admin.Api.Generated.Api.Me.MeRequestBuilder(PathParameters, RequestAdapter);
+        }
+        /// <summary>The sla property</summary>
+        public global::HelpDesk.Admin.Api.Generated.Api.Sla.SlaRequestBuilder Sla
+        {
+            get => new global::HelpDesk.Admin.Api.Generated.Api.Sla.SlaRequestBuilder(PathParameters, RequestAdapter);
         }
         /// <summary>The tickets property</summary>
         public global::HelpDesk.Admin.Api.Generated.Api.Tickets.TicketsRequestBuilder Tickets

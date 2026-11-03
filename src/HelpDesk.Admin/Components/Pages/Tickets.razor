@@ -40,6 +40,7 @@ else
             <MudTh>Título</MudTh>
             <MudTh>Prioridad</MudTh>
             <MudTh>Estado</MudTh>
+            <MudTh>SLA</MudTh>
             <MudTh>Agente</MudTh>
             <MudTh>Solicitante</MudTh>
             <MudTh>Creado</MudTh>
@@ -49,6 +50,7 @@ else
             <MudTd DataLabel="Título"><MudLink Href="@($"/tickets/{context.Id}")">@context.Title</MudLink></MudTd>
             <MudTd DataLabel="Prioridad"><PriorityChip Priority="context.Priority" /></MudTd>
             <MudTd DataLabel="Estado"><StatusChip Status="context.Status" /></MudTd>
+            <MudTd DataLabel="SLA"><SlaChip State="context.SlaState" /></MudTd>
             <MudTd DataLabel="Agente">@(context.AssignedTo ?? "Sin asignar")</MudTd>
             <MudTd DataLabel="Solicitante">@(context.RequestedBy ?? "Interno")</MudTd>
             <MudTd DataLabel="Creado"><DateText Value="context.CreatedAt" /></MudTd>

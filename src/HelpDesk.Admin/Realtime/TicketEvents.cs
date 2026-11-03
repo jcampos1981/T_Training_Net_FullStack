@@ -26,3 +26,8 @@ public sealed record TicketsReassignedEvent(
     int Tickets,
     string Actor,
     DateTimeOffset OccurredAt);
+
+// Los totales de quien lo recibe. Ticket solo viene si la alerta es una sola.
+public sealed record SlaAlertsEvent(int AtRisk, int Breached, SlaAlertedTicket? Ticket, DateTimeOffset OccurredAt);
+
+public sealed record SlaAlertedTicket(int Id, string Code, string Title);

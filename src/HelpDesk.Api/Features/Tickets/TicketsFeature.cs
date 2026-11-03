@@ -82,6 +82,7 @@ public static class TicketsFeature
         [AsParameters] PageRequest page,
         ClaimsPrincipal user,
         ITicketRepository repository,
+        ISlaPolicy sla,
         CancellationToken cancellationToken)
     {
         // Un agente solo lista lo suyo: el filtro se ajusta aquí, ANTES de consultar, no después de traer los datos.
@@ -92,7 +93,7 @@ public static class TicketsFeature
 
         IReadOnlyList<Ticket> tickets = await repository.ListAsync(allowed, AfterTicket(page), page.Take(), cancellationToken);
 
-        return TypedResults.Ok(CursorPage.Create(tickets, page, ticket => ticket.ToResponse(), ticket => ticket.Id.Value));
+        return TypedResults.Ok(CursorPage.Create(tickets, page, ticket => ticket.ToResponse(sla), ticket => ticket.Id.Value));
     }
 
     // after=0 significa "desde el principio": no hay TicketId 0.
@@ -105,6 +106,7 @@ public static class TicketsFeature
         ClaimsPrincipal user,
         IAuthorizationService authorization,
         ITicketRepository repository,
+        ISlaPolicy sla,
         CancellationToken cancellationToken)
     {
         Ticket? ticket = await repository.FindAsync(new TicketId(id), cancellationToken);
@@ -119,7 +121,7 @@ public static class TicketsFeature
             return TypedResults.Forbid();
         }
 
-        return TypedResults.Ok(ticket.ToResponse());
+        return TypedResults.Ok(ticket.ToResponse(sla));
     }
 
     // La validación de CreateTicketRequest ocurre antes de llegar aquí: si falla, responde 400 sola.
@@ -129,6 +131,7 @@ public static class TicketsFeature
         IAuthorizationService authorization,
         ITicketRepository repository,
         ITicketNotifier notifier,
+        ISlaPolicy sla,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -152,7 +155,7 @@ public static class TicketsFeature
         await notifier.TicketChangedAsync(ticket, TicketEventKind.Created, user);
 
         // 201 Created + cabecera Location apuntando a GET /api/tickets/{id}
-        return TypedResults.CreatedAtRoute(ticket.ToResponse(), nameof(GetTicket), new { id = ticket.Id.Value });
+        return TypedResults.CreatedAtRoute(ticket.ToResponse(sla), nameof(GetTicket), new { id = ticket.Id.Value });
     }
 
     private static async Task<Results<Ok<TicketResponse>, NotFound, ForbidHttpResult>> UpdateTicket(
@@ -162,6 +165,7 @@ public static class TicketsFeature
         IAuthorizationService authorization,
         ITicketRepository repository,
         ITicketNotifier notifier,
+        ISlaPolicy sla,
         CancellationToken cancellationToken)
     {
         Ticket? current = await repository.FindAsync(new TicketId(id), cancellationToken);
@@ -198,7 +202,7 @@ public static class TicketsFeature
 
         await notifier.TicketChangedAsync(saved, kind, user, previousAgent);
 
-        return TypedResults.Ok(saved.ToResponse());
+        return TypedResults.Ok(saved.ToResponse(sla));
     }
 
     // "Reasignado" solo si no cambió nada más: al cliente no se le avisa de eso, pero sí de un cambio de estado.

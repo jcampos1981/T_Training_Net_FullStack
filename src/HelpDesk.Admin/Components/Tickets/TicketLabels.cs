@@ -24,6 +24,22 @@ public static class TicketLabels
         TicketPriority.Critical => "Crítica"
     };
 
+    public static string Of(SlaState state) => state switch
+    {
+        SlaState.OnTrack => "En plazo",
+        SlaState.AtRisk => "En riesgo",
+        SlaState.Breached => "Vencido",
+        SlaState.Closed => "Cerrado"
+    };
+
+    public static Color ColorOf(SlaState state) => state switch
+    {
+        SlaState.OnTrack => Color.Default,
+        SlaState.AtRisk => Color.Warning,
+        SlaState.Breached => Color.Error,
+        SlaState.Closed => Color.Default
+    };
+
     public static Color ColorOf(TicketStatus status) => status switch
     {
         TicketStatus.Open => Color.Info,

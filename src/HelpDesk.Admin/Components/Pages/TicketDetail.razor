@@ -41,6 +41,13 @@ else
             <tbody>
                 <tr><th scope="row">Estado</th><td><StatusChip Status="ticket.Status" /></td></tr>
                 <tr><th scope="row">Prioridad</th><td><PriorityChip Priority="ticket.Priority" /></td></tr>
+                @if (ticket.SlaState != SlaState.Closed)
+                {
+                    <tr data-testid="ticket-sla">
+                        <th scope="row">SLA</th>
+                        <td><SlaChip State="ticket.SlaState" /> <DateText Value="ticket.SlaDeadline" /></td>
+                    </tr>
+                }
                 <tr><th scope="row">Agente</th><td>@(ticket.AssignedTo ?? "Sin asignar")</td></tr>
                 <tr><th scope="row">Solicitante</th><td>@(ticket.RequestedBy ?? "Interno")</td></tr>
                 <tr><th scope="row">Creado</th><td><DateText Value="ticket.CreatedAt" /></td></tr>

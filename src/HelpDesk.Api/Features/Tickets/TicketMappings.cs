@@ -8,7 +8,7 @@ public static class TicketMappings
 {
     extension(Ticket ticket)
     {
-        public TicketResponse ToResponse() => new(
+        public TicketResponse ToResponse(ISlaPolicy sla) => new(
             ticket.Id.Value,
             ticket.Id.ToString(),
             ticket.Title,
@@ -17,6 +17,8 @@ public static class TicketMappings
             ticket.CreatedAt,
             ticket.AssignedTo,
             ticket.Version.ToString(CultureInfo.InvariantCulture),
-            ticket.RequestedBy);
+            ticket.RequestedBy,
+            sla.Evaluate(ticket),
+            sla.DeadlineOf(ticket));
     }
 }

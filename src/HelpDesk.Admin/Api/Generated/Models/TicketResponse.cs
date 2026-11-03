@@ -44,6 +44,10 @@ namespace HelpDesk.Admin.Api.Generated.Models
 #else
         public string RequestedBy { get; set; }
 #endif
+        /// <summary>The slaDeadline property</summary>
+        public DateTimeOffset? SlaDeadline { get; set; }
+        /// <summary>The slaState property</summary>
+        public global::HelpDesk.Admin.Api.Generated.Models.SlaState? SlaState { get; set; }
         /// <summary>The status property</summary>
         public global::HelpDesk.Admin.Api.Generated.Models.TicketStatus? Status { get; set; }
         /// <summary>The title property</summary>
@@ -93,6 +97,8 @@ namespace HelpDesk.Admin.Api.Generated.Models
                 { "id", n => { Id = n.GetIntValue(); } },
                 { "priority", n => { Priority = n.GetEnumValue<global::HelpDesk.Admin.Api.Generated.Models.TicketPriority>(); } },
                 { "requestedBy", n => { RequestedBy = n.GetStringValue(); } },
+                { "slaDeadline", n => { SlaDeadline = n.GetDateTimeOffsetValue(); } },
+                { "slaState", n => { SlaState = n.GetEnumValue<global::HelpDesk.Admin.Api.Generated.Models.SlaState>(); } },
                 { "status", n => { Status = n.GetEnumValue<global::HelpDesk.Admin.Api.Generated.Models.TicketStatus>(); } },
                 { "title", n => { Title = n.GetStringValue(); } },
                 { "version", n => { Version = n.GetStringValue(); } },
@@ -111,6 +117,8 @@ namespace HelpDesk.Admin.Api.Generated.Models
             writer.WriteIntValue("id", Id);
             writer.WriteEnumValue<global::HelpDesk.Admin.Api.Generated.Models.TicketPriority>("priority", Priority);
             writer.WriteStringValue("requestedBy", RequestedBy);
+            writer.WriteDateTimeOffsetValue("slaDeadline", SlaDeadline);
+            writer.WriteEnumValue<global::HelpDesk.Admin.Api.Generated.Models.SlaState>("slaState", SlaState);
             writer.WriteEnumValue<global::HelpDesk.Admin.Api.Generated.Models.TicketStatus>("status", Status);
             writer.WriteStringValue("title", Title);
             writer.WriteStringValue("version", Version);

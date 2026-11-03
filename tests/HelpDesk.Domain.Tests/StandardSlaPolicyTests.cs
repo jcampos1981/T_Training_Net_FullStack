@@ -51,6 +51,35 @@ public sealed class StandardSlaPolicyTests
         Assert.Equal(expected, _policy.Evaluate(ticket));
     }
 
+    // El monitor busca en SQL con estas fronteras, y Evaluate decide en memoria: si no coinciden, la pantalla mostraría
+    // "en plazo" para un ticket con alerta, o al revés.
+    [Theory]
+    [InlineData(TicketPriority.Critical)]
+    [InlineData(TicketPriority.High)]
+    [InlineData(TicketPriority.Medium)]
+    [InlineData(TicketPriority.Low)]
+    public void Frontiers_MatchWhatEvaluateDecides(TicketPriority priority)
+    {
+        Ticket ticket = TestTickets.Create(priority: priority, createdAt: _clock.GetUtcNow());
+
+        _clock.Advance(_policy.AtRiskAfter(priority) - TimeSpan.FromTicks(1));
+        Assert.Equal(SlaState.OnTrack, _policy.Evaluate(ticket));
+
+        _clock.Advance(TimeSpan.FromTicks(1));
+        Assert.Equal(SlaState.AtRisk, _policy.Evaluate(ticket));
+
+        _clock.SetUtcNow(ticket.CreatedAt + _policy.ResolutionTimeFor(priority));
+        Assert.Equal(SlaState.Breached, _policy.Evaluate(ticket));
+    }
+
+    [Fact]
+    public void DeadlineOf_IsCreationPlusResolutionTime()
+    {
+        Ticket ticket = TestTickets.Create(priority: TicketPriority.High, createdAt: TestTickets.Now);
+
+        Assert.Equal(TestTickets.Now.AddHours(8), _policy.DeadlineOf(ticket));
+    }
+
     [Fact]
     public void Evaluate_ClosedTicket_IsClosedNoMatterHowMuchTimePassed()
     {

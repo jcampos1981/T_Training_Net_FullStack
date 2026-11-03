@@ -1,0 +1,10 @@
+@* Un ticket resuelto o cerrado ya no tiene plazo que cumplir: no se muestra nada. *@
+@if (State is { } state && state != SlaState.Closed)
+{
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="TicketLabels.ColorOf(state)">@TicketLabels.Of(state)</MudChip>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public SlaState? State { get; set; }
+}

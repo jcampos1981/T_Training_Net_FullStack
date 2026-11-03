@@ -91,6 +91,13 @@ public sealed partial class RefreshTokenStore(
             .ExecuteUpdateAsync(setters => setters.SetProperty(token => token.RevokedAt, now), cancellationToken);
     }
 
+    // Un token vencido no se puede canjear (RedeemAsync lo rechaza antes de mirar nada más): su fila ya no aporta.
+    public Task<int> DeleteExpiredAsync(CancellationToken cancellationToken)
+    {
+        DateTimeOffset now = clock.GetUtcNow();
+        return db.RefreshTokens.Where(token => token.ExpiresAt <= now).ExecuteDeleteAsync(cancellationToken);
+    }
+
     private static byte[] Hash(string value) => SHA256.HashData(Encoding.UTF8.GetBytes(value));
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Refresh token reutilizado: usuario {UserId}, familia {FamilyId} revocada completa.")]

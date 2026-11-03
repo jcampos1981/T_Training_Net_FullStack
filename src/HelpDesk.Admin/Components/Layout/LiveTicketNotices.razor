@@ -20,13 +20,15 @@
 
         Events.TicketChanged += HandleTicketChanged;
         Events.TicketsReassigned += HandleTicketsReassigned;
+        Events.SlaAlertsRaised += HandleSlaAlerts;
     }
 
     private void HandleTicketChanged(TicketEvent ticketEvent)
     {
         if (DeservesNotice(ticketEvent))
         {
-            _ = InvokeAsync(() => Show(TextOf(ticketEvent), ticketEvent.Kind is TicketEventKind.Deleted ? null : ticketEvent.TicketId));
+            string? link = ticketEvent.Kind is TicketEventKind.Deleted ? null : $"/tickets/{ticketEvent.TicketId}";
+            _ = InvokeAsync(() => Show(TextOf(ticketEvent), Severity.Info, link));
         }
     }
 
@@ -38,8 +40,39 @@
                 ? $"{reassigned.Actor} te asignó {reassigned.Tickets:N0} tickets de {reassigned.From}."
                 : $"{reassigned.Actor} reasignó {reassigned.Tickets:N0} de tus tickets a {reassigned.To}.";
 
-            _ = InvokeAsync(() => Show(text, ticketId: null));
+            _ = InvokeAsync(() => Show(text, Severity.Info, link: null));
         }
+    }
+
+    // La API ya mandó solo lo que le toca a este usuario: lo suyo a un agente, y el total a supervisión.
+    private void HandleSlaAlerts(SlaAlertsEvent alerts)
+    {
+        Severity severity = alerts.Breached > 0 ? Severity.Error : Severity.Warning;
+        string link = alerts.Ticket is { } ticket ? $"/tickets/{ticket.Id}" : "/alertas";
+
+        _ = InvokeAsync(() => Show(SlaText(alerts), severity, link));
+    }
+
+    private static string SlaText(SlaAlertsEvent alerts)
+    {
+        if (alerts.Ticket is { } ticket)
+        {
+            return $"SLA {(alerts.Breached > 0 ? "vencido" : "en riesgo")}: {ticket.Code} {ticket.Title}";
+        }
+
+        List<string> parts = [];
+
+        if (alerts.Breached > 0)
+        {
+            parts.Add($"{alerts.Breached:N0} {(alerts.Breached == 1 ? "ticket" : "tickets")} con el SLA vencido");
+        }
+
+        if (alerts.AtRisk > 0)
+        {
+            parts.Add($"{alerts.AtRisk:N0} en riesgo");
+        }
+
+        return $"{string.Join(" y ", parts)}.";
     }
 
     // Un agente solo recibe avisos de sus tickets: todo le interesa. Supervisión los recibe todos, y un aviso por cada
@@ -69,20 +102,20 @@
     };
 #pragma warning restore CS8524
 
-    private void Show(string text, int? ticketId) =>
-        Snackbar.Add(text, Severity.Info, options =>
+    private void Show(string text, Severity severity, string? link) =>
+        Snackbar.Add(text, severity, options =>
         {
             // Con una acción ("Ver"), MudBlazor lo deja en pantalla hasta que alguien lo cierre: en un turno con
             // movimiento se acumularían. La lista y el detalle ya están al día; esto solo avisa.
             options.RequireInteraction = false;
             options.VisibleStateDuration = NoticeDurationMilliseconds;
 
-            if (ticketId is not null)
+            if (link is not null)
             {
                 options.Action = "Ver";
                 options.OnClick = _ =>
                 {
-                    Navigation.NavigateTo($"/tickets/{ticketId}");
+                    Navigation.NavigateTo(link);
                     return Task.CompletedTask;
                 };
             }
@@ -94,5 +127,6 @@
     {
         Events.TicketChanged -= HandleTicketChanged;
         Events.TicketsReassigned -= HandleTicketsReassigned;
+        Events.SlaAlertsRaised -= HandleSlaAlerts;
     }
 }

@@ -84,6 +84,7 @@ public static class AccountsFeature
         services.AddSingleton<AccessTokenIssuer>();
         services.AddScoped<RefreshTokenStore>();
         services.AddScoped<TokenService>();
+        services.AddHostedService<ExpiredRefreshTokenCleanup>();
 
         // Conviven varias credenciales: JWT propio (/api/token), JWT de Keycloak y lo de Identity (cookie o su token).
         // Este AddAuthentication va DESPUÉS de AddIdentityApiEndpoints, así que su esquema por defecto manda.

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using HelpDesk.Api.Features.Agents;
+using HelpDesk.Api.Features.Sla;
 using HelpDesk.Domain;
 
 namespace HelpDesk.Api.Features.Notifications;
@@ -11,4 +12,6 @@ public interface ITicketNotifier
     Task TicketChangedAsync(Ticket ticket, TicketEventKind kind, ClaimsPrincipal actor, string? previousAgent = null);
 
     Task TicketsReassignedAsync(ReassignTicketsResponse reassigned, ClaimsPrincipal actor);
+
+    Task SlaAlertsRaisedAsync(IReadOnlyCollection<RaisedSlaAlert> alerts);
 }

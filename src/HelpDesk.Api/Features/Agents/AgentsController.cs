@@ -43,6 +43,7 @@ public sealed class AgentsController : ControllerBase
         string name,
         [FromQuery] PageRequest page,
         [FromServices] ITicketRepository repository,
+        [FromServices] ISlaPolicy sla,
         CancellationToken cancellationToken)
     {
         // La misma regla que GET /api/tickets: el agente de la ruta tiene que ser él mismo, salvo para supervisión.
@@ -54,7 +55,7 @@ public sealed class AgentsController : ControllerBase
         IReadOnlyList<Ticket> tickets = await repository.ListAsync(
             filter, TicketsFeature.AfterTicket(page), page.Take(), cancellationToken);
 
-        return Ok(CursorPage.Create(tickets, page, ticket => ticket.ToResponse(), ticket => ticket.Id.Value));
+        return Ok(CursorPage.Create(tickets, page, ticket => ticket.ToResponse(sla), ticket => ticket.Id.Value));
     }
 
     [HttpPost("{name}/reassign")]

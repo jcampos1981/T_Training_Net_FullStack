@@ -49,12 +49,21 @@ public sealed class TicketEventsConnection : IAsyncDisposable
             TicketsChanged?.Invoke(null);
         });
 
+        // Una alerta no cambia el ticket, pero sí su estado de SLA: las pantallas que lo muestran deben enterarse.
+        connection.On<SlaAlertsEvent>("SlaAlertsRaised", alerts =>
+        {
+            SlaAlertsRaised?.Invoke(alerts);
+            TicketsChanged?.Invoke(alerts.Ticket?.Id);
+        });
+
         connection.Closed += HandleClosedAsync;
     }
 
     public event Action<TicketEvent>? TicketChanged;
 
     public event Action<TicketsReassignedEvent>? TicketsReassigned;
+
+    public event Action<SlaAlertsEvent>? SlaAlertsRaised;
 
     // Para las pantallas: qué ticket cambió, o null si pueden ser varios (reasignación masiva, o se recuperó la conexión).
     public event Action<int?>? TicketsChanged;

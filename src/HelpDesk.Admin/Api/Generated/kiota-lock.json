@@ -1,5 +1,5 @@
 {
-  "descriptionHash": "0107FA44E20FE60092A3FCCBF9B499C3ABBB277C16D45BE6D28D7CE62AB2A99B580400CF5029329474DB60698C2BB4C1ACA9AF07BE80ED525E8D2FA6043D7DFE",
+  "descriptionHash": "5A4932D65EAC3D3397038F48307AFCFBC78AE7F4001285F468FE9F798CE643E60D60B2C834F01C00CE6EFEFC6EAB74DE5EE54BE689B8D7871EC643BAABA95E08",
   "descriptionLocation": "http://localhost:5159/openapi/v1.json",
   "lockFileVersion": "1.0.0",
   "kiotaVersion": "1.37.0",
@@ -34,7 +34,8 @@
     "/api/tickets/**",
     "/api/agents",
     "/api/agents/**",
-    "/api/dashboard"
+    "/api/dashboard",
+    "/api/sla/**"
   ],
   "excludePatterns": [],
   "disabledValidationRules": [],

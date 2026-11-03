@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using HelpDesk.Api.Features.Accounts;
 using HelpDesk.Api.Features.Agents;
+using HelpDesk.Api.Features.Sla;
 using HelpDesk.Domain;
 using Microsoft.AspNetCore.SignalR;
 
@@ -54,6 +55,31 @@ public sealed class SignalRTicketNotifier(
         catch (Exception exception)
         {
             logger.LogWarning(exception, "No se pudo avisar la reasignación de {From} a {To}.", reassigned.From, reassigned.To);
+        }
+    }
+
+    // Supervisión recibe el total, y cada agente solo lo suyo. El cliente no: el SLA es un compromiso interno del equipo.
+    public async Task SlaAlertsRaisedAsync(IReadOnlyCollection<RaisedSlaAlert> alerts)
+    {
+        DateTimeOffset now = clock.GetUtcNow();
+
+        try
+        {
+            await hub.Clients.Group(TicketAudience.Supervision).SlaAlertsRaised(SlaAlertsEvent.From(alerts, now));
+
+            IEnumerable<IGrouping<string, RaisedSlaAlert>> byAgent = alerts
+                .Where(alert => alert.AssignedTo is not null)
+                .GroupBy(alert => alert.AssignedTo!, StringComparer.OrdinalIgnoreCase);
+
+            foreach (IGrouping<string, RaisedSlaAlert> agentAlerts in byAgent)
+            {
+                await hub.Clients.Group(TicketAudience.Agent(agentAlerts.Key)).SlaAlertsRaised(SlaAlertsEvent.From([.. agentAlerts], now));
+            }
+        }
+        catch (Exception exception)
+        {
+            // Las alertas ya están guardadas: siguen disponibles en GET /api/sla/alerts.
+            logger.LogWarning(exception, "No se pudieron avisar {Count} alertas de SLA.", alerts.Count);
         }
     }
 }

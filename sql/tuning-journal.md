@@ -470,6 +470,24 @@ En PostgreSQL un `UPDATE` no sobrescribe la fila: escribe una versión nueva y d
 
 **La comparación de fondo.** SQL Server y PostgreSQL resuelven "leer sin bloquear" de forma parecida: guardan versiones de las filas (RCSI, ADR / MVCC). La diferencia está en quién limpia. En SQL Server, el version store de tempdb o el de ADR se limpian solos. En PostgreSQL las versiones viejas viven en la misma tabla, y `VACUUM` (o autovacuum) es parte del mantenimiento: si se atrasa, la tabla y sus índices crecen.
 
+### Caso 19 · El monitor de SLA: cuando `TOP` engaña al optimizador
+
+**Problema.** El monitor de SLA (Fase 7) busca cada minuto los tickets abiertos sin alerta. La sentencia lleva `TOP (1000)`, para avanzar por lotes si hay mucho acumulado. Con las 50.184 alertas ya creadas, en régimen normal **no encuentra nada, y aun así gastaba 154 mil lecturas y 836 ms de CPU por vuelta**.
+
+**Causa.** `TOP` le da al optimizador una "meta de filas" (*row goal*): supone que encontrará 1.000 filas pronto y que no tendrá que leer todo, así que elige un **Nested Loops**, barato para pocas filas. Pero el `NOT EXISTS` descarta todas: hace un seek de 3 lecturas por cada uno de los 50 mil tickets abiertos, sin llegar nunca a la meta. El caso más común es justo el peor para ese plan.
+
+**Cambio.** `OPTION (USE HINT('DISABLE_OPTIMIZER_ROWGOAL'))`: el optimizador estima sin esa suposición y elige un Hash Match, que lee cada índice una vez.
+
+| Medición | Sin el hint | Con el hint |
+|---|---:|---:|
+| Barrido sin nada nuevo: lecturas lógicas | 154.410 | **1.159** (133 veces menos) |
+| Barrido sin nada nuevo: CPU | 836 ms | **62 ms** |
+| Primer barrido: 50.184 alertas en 52 lotes | 47,9 s | **14,1 s** |
+
+**Por qué no se creó otro índice.** El de tickets abiertos que ya existía (`IX_Tickets_Open_AssignedTo`, caso 3) cubre la búsqueda: 713 lecturas para recorrerlo entero, sin tocar el millón de filas. La lista de alertas (`GET /api/sla/alerts`) tampoco lo necesitó: 167 lecturas para supervisión, 318 para un agente con muchas, 3 para un agente sin ninguna y 446 filtrando por un nivel sin filas.
+
+**Lección.** Un plan puede ser bueno para el caso que imaginó el optimizador y malo para el que ocurre de verdad. `TOP` con un filtro que casi nunca encuentra filas es la receta clásica.
+
 ---
 
 ## Trampas de herramientas

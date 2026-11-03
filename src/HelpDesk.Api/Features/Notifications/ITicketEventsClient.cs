@@ -9,4 +9,6 @@ public interface ITicketEventsClient
     Task MyTicketChanged(PortalTicketEvent ticketEvent);
 
     Task TicketsReassigned(TicketsReassignedEvent reassigned);
+
+    Task SlaAlertsRaised(SlaAlertsEvent alerts);
 }

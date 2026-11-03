@@ -7,6 +7,10 @@ public sealed class StandardSlaPolicy(SlaOptions options, TimeProvider clock) : 
             ? TimeSpan.FromHours(hours)
             : throw new ArgumentOutOfRangeException(nameof(priority), priority, "Prioridad sin SLA definido.");
 
+    public TimeSpan AtRiskAfter(TicketPriority priority) => ResolutionTimeFor(priority) * options.AtRiskThreshold;
+
+    public DateTimeOffset DeadlineOf(Ticket ticket) => ticket.CreatedAt + ResolutionTimeFor(ticket.Priority);
+
     public SlaState Evaluate(Ticket ticket)
     {
         if (ticket.IsClosed)

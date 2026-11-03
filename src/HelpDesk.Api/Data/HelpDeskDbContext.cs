@@ -1,4 +1,5 @@
 using HelpDesk.Api.Features.Accounts.Tokens;
+using HelpDesk.Api.Features.Sla;
 using HelpDesk.Domain;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -20,6 +21,8 @@ public sealed class HelpDeskDbContext(DbContextOptions<HelpDeskDbContext> option
     public DbSet<TicketComment> Comments => Set<TicketComment>();
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+
+    public DbSet<SlaAlert> SlaAlerts => Set<SlaAlert>();
 
     // Convenciones: reglas que aplican a TODAS las propiedades de un tipo, en cualquier entidad.
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

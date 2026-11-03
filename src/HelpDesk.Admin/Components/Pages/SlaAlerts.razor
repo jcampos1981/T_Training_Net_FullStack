@@ -1,0 +1,160 @@
+@page "/alertas"
+@implements IDisposable
+@inject HelpDeskApiClient Client
+@inject NavigationManager Navigation
+
+<PageTitle>Alertas de SLA · HelpDesk</PageTitle>
+
+<MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">Alertas de SLA</MudText>
+
+@* Un agente ve las suyas y supervisión las de todo el equipo: lo decide la API. Un ticket resuelto deja de aparecer. *@
+<LiveRefresh OnChanged="() => hasChanges = true" />
+
+<MudPaper Outlined="true" Elevation="0" Class="pa-3 mb-3">
+    <MudSelect T="SlaState?" Label="Nivel" Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined" Style="max-width: 16rem"
+               ToStringFunc="LevelText" Value="level" ValueChanged="ApplyLevel" data-testid="filter-level">
+        <MudSelectItem T="SlaState?" Value="@((SlaState?)null)">Todas</MudSelectItem>
+        <MudSelectItem T="SlaState?" Value="@SlaState.AtRisk">@TicketLabels.Of(SlaState.AtRisk)</MudSelectItem>
+        <MudSelectItem T="SlaState?" Value="@SlaState.Breached">@TicketLabels.Of(SlaState.Breached)</MudSelectItem>
+    </MudSelect>
+</MudPaper>
+
+<div role="status">
+    @if (hasChanges)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3" data-testid="alerts-changes">
+            Hay cambios en las alertas.
+            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="ReloadAsync">Actualizar</MudButton>
+        </MudAlert>
+    }
+</div>
+
+@if (alerts is null)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (alerts.Count == 0)
+{
+    <MudAlert Severity="Severity.Success" data-testid="no-alerts">No hay alertas de SLA con este filtro.</MudAlert>
+}
+else
+{
+    <MudTable T="SlaAlertResponse" Items="alerts" Dense="true" Hover="true" Outlined="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>Nivel</MudTh>
+            <MudTh>Código</MudTh>
+            <MudTh>Título</MudTh>
+            <MudTh>Prioridad</MudTh>
+            <MudTh>Agente</MudTh>
+            <MudTh>Vencimiento</MudTh>
+            <MudTh>Alerta</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Nivel"><SlaChip State="context.Level" /></MudTd>
+            <MudTd DataLabel="Código"><code>@context.Code</code></MudTd>
+            <MudTd DataLabel="Título"><MudLink Href="@($"/tickets/{context.TicketId}")">@context.Title</MudLink></MudTd>
+            <MudTd DataLabel="Prioridad"><PriorityChip Priority="context.Priority" /></MudTd>
+            <MudTd DataLabel="Agente">@(context.AssignedTo ?? "Sin asignar")</MudTd>
+            <MudTd DataLabel="Vencimiento"><DateText Value="context.Deadline" /></MudTd>
+            <MudTd DataLabel="Alerta"><DateText Value="context.RaisedAt" /></MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    @if (nextAfter is not null)
+    {
+        <div class="d-flex justify-center mt-3">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="loadingMore" OnClick="LoadMoreAsync">
+                @(loadingMore ? "Cargando…" : "Cargar más")
+            </MudButton>
+        </div>
+    }
+}
+
+@code {
+    private const int PageSize = 25;
+    private const string LevelKey = "nivel";
+
+    // En la URL, como los filtros de la lista de tickets: "Atrás" funciona y el enlace se puede compartir.
+    [SupplyParameterFromQuery(Name = LevelKey)]
+    public string? LevelQuery { get; set; }
+
+    private SlaState? level;
+    private List<SlaAlertResponse>? alerts;
+    private int? nextAfter;
+    private bool loadingMore;
+    private bool hasChanges;
+    private CancellationTokenSource? loadCancellation;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Lo que no es un nivel válido se ignora: la URL la puede escribir cualquiera.
+        SlaState? requested = Enum.TryParse(LevelQuery, ignoreCase: true, out SlaState parsed) ? parsed : null;
+
+        if (alerts is not null && requested == level)
+        {
+            return;
+        }
+
+        level = requested;
+        await ReloadAsync();
+    }
+
+    private void ApplyLevel(SlaState? next) =>
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameter(LevelKey, next?.ToString()));
+
+    private static string LevelText(SlaState? value) => value is { } state ? TicketLabels.Of(state) : "Todas";
+
+    private async Task ReloadAsync()
+    {
+        hasChanges = false;
+        alerts = null;
+        nextAfter = null;
+        await LoadPageAsync(after: 0);
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        loadingMore = true;
+        try
+        {
+            await LoadPageAsync(nextAfter ?? 0);
+        }
+        finally
+        {
+            loadingMore = false;
+        }
+    }
+
+    private async Task LoadPageAsync(int after)
+    {
+        // Si el usuario cambia de filtro mientras esto carga, la respuesta anterior ya no interesa.
+        loadCancellation?.Cancel();
+        loadCancellation?.Dispose();
+        loadCancellation = new CancellationTokenSource();
+        CancellationToken cancellation = loadCancellation.Token;
+
+        try
+        {
+            CursorPageOfSlaAlertResponse? page = await Client.Api.Sla.Alerts.GetAsync(request =>
+            {
+                request.QueryParameters.After = after;
+                request.QueryParameters.PageSize = PageSize;
+                request.QueryParameters.Level = level;
+            }, cancellation);
+
+            alerts ??= [];
+            alerts.AddRange(page?.Items ?? []);
+            nextAfter = page?.NextAfter;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // La canceló una carga más nueva, o el usuario salió de la pantalla: no hay nada que mostrar.
+        }
+    }
+
+    public void Dispose()
+    {
+        loadCancellation?.Cancel();
+        loadCancellation?.Dispose();
+    }
+}
