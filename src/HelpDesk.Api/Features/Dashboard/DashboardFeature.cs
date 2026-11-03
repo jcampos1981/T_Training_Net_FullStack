@@ -17,7 +17,9 @@ public static class DashboardFeature
             .RequireAuthorization(HelpDeskPolicies.Supervision) // la carga de TODO el equipo: solo supervisión
             .WithTags("Dashboard")
             .WithName(nameof(GetDashboard))
-            .WithSummary("Indicadores: tickets por estado, carga abierta por agente y comentarios de la última semana.");
+            .WithSummary("Indicadores: tickets por estado, carga abierta por agente y comentarios de la última semana.")
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         return app;
     }

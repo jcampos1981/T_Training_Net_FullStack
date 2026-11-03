@@ -1,5 +1,6 @@
 @page "/tickets/{Id:int}"
 @inject HelpDeskApiClient Client
+@inject ISnackbar Snackbar
 
 <PageTitle>@(ticket?.Code ?? "Ticket") · HelpDesk</PageTitle>
 
@@ -18,18 +19,43 @@ else
 {
     <MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true"><code>@ticket.Code</code> @ticket.Title</MudText>
 
-    <MudSimpleTable Dense="true" Outlined="true" Elevation="0" Class="mb-4 ticket-facts">
-        <tbody>
-            <tr><th scope="row">Estado</th><td><StatusChip Status="ticket.Status" /></td></tr>
-            <tr><th scope="row">Prioridad</th><td><PriorityChip Priority="ticket.Priority" /></td></tr>
-            <tr><th scope="row">Agente</th><td>@(ticket.AssignedTo ?? "Sin asignar")</td></tr>
-            <tr><th scope="row">Solicitante</th><td>@(ticket.RequestedBy ?? "Interno")</td></tr>
-            <tr><th scope="row">Creado</th><td><DateText Value="ticket.CreatedAt" /></td></tr>
-        </tbody>
-    </MudSimpleTable>
+    @if (editing && !IsClosed)
+    {
+        <MudPaper Outlined="true" Elevation="0" Class="pa-4 mb-4">
+            <TicketEditForm Ticket="ticket" OnSaved="HandleSaved" OnReloaded="HandleReloaded" OnCancelled="() => editing = false" />
+        </MudPaper>
+    }
+    else
+    {
+        <MudSimpleTable Dense="true" Outlined="true" Elevation="0" Class="mb-3 ticket-facts">
+            <tbody>
+                <tr><th scope="row">Estado</th><td><StatusChip Status="ticket.Status" /></td></tr>
+                <tr><th scope="row">Prioridad</th><td><PriorityChip Priority="ticket.Priority" /></td></tr>
+                <tr><th scope="row">Agente</th><td>@(ticket.AssignedTo ?? "Sin asignar")</td></tr>
+                <tr><th scope="row">Solicitante</th><td>@(ticket.RequestedBy ?? "Interno")</td></tr>
+                <tr><th scope="row">Creado</th><td><DateText Value="ticket.CreatedAt" /></td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        @if (!IsClosed)
+        {
+            <MudButton Variant="Variant.Outlined" Class="mb-4" OnClick="() => editing = true">Editar</MudButton>
+        }
+    }
 
     <MudText Typo="Typo.h5" HtmlTag="h2" GutterBottom="true">Conversación</MudText>
     <Conversation Comments="conversation" />
+
+    <div class="mt-4">
+        @if (IsClosed)
+        {
+            <MudText Class="mud-text-secondary" data-testid="ticket-closed">Este ticket está cerrado: ya no se puede editar ni comentar.</MudText>
+        }
+        else
+        {
+            <AddCommentForm TicketId="Id" OnAdded="HandleCommentAdded" OnRejected="HandleCommentRejectedAsync" />
+        }
+    </div>
 }
 
 @code {
@@ -39,23 +65,19 @@ else
     private TicketResponse? ticket;
     private IReadOnlyList<CommentResponse> conversation = [];
     private ApiErrorMessage? unavailable;
+    private bool editing;
+
+    private bool IsClosed => ticket?.Status == TicketStatus.Closed;
 
     protected override async Task OnParametersSetAsync()
     {
         ticket = null;
         unavailable = null;
+        editing = false;
 
         try
         {
-            // Las dos llamadas salen en paralelo. Si el token está por vencer, SessionAccessTokens lo renueva una sola vez.
-            var requests = Client.Api.Tickets[Id];
-            Task<TicketResponse?> ticketRequest = requests.GetAsync();
-            Task<List<CommentResponse>?> commentsRequest = requests.Comments.GetAsync();
-            await Task.WhenAll(ticketRequest, commentsRequest);
-
-            ticket = await ticketRequest;
-            // La API los devuelve del más reciente al más antiguo; una conversación se lee al revés.
-            conversation = [.. Enumerable.Reverse(await commentsRequest ?? [])];
+            await LoadAsync();
         }
         catch (ApiException error) when (error.ResponseStatusCode == StatusCodes.Status404NotFound)
         {
@@ -66,5 +88,37 @@ else
             // La decisión es de la API (un agente solo ve los suyos). El panel solo la muestra.
             unavailable = new ApiErrorMessage("Este ticket no está asignado a ti", "Solo supervisión puede ver los tickets de otros agentes.");
         }
+    }
+
+    private async Task LoadAsync()
+    {
+        // Las dos llamadas salen en paralelo. Si el token está por vencer, SessionAccessTokens lo renueva una sola vez.
+        var requests = Client.Api.Tickets[Id];
+        Task<TicketResponse?> ticketRequest = requests.GetAsync();
+        Task<List<CommentResponse>?> commentsRequest = requests.Comments.GetAsync();
+        await Task.WhenAll(ticketRequest, commentsRequest);
+
+        ticket = await ticketRequest;
+        // La API los devuelve del más reciente al más antiguo; una conversación se lee al revés.
+        conversation = [.. Enumerable.Reverse(await commentsRequest ?? [])];
+    }
+
+    // El hijo no modifica el ticket del padre: avisa con un EventCallback y el padre actualiza su propio estado.
+    private void HandleSaved(TicketResponse saved)
+    {
+        ticket = saved;
+        editing = false;
+        Snackbar.Add("Cambios guardados.", Severity.Success);
+    }
+
+    private void HandleReloaded(TicketResponse latest) => ticket = latest;
+
+    // Se agrega el comentario que devolvió el POST, sin volver a pedir la conversación completa.
+    private void HandleCommentAdded(CommentResponse added) => conversation = [.. conversation, added];
+
+    private async Task HandleCommentRejectedAsync(string reason)
+    {
+        Snackbar.Add(reason, Severity.Warning);
+        await LoadAsync();
     }
 }

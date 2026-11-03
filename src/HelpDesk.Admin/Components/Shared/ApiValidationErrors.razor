@@ -1,0 +1,85 @@
+@using System.Reflection
+@implements IDisposable
+
+@* DataAnnotationsValidator revisa las reglas que el panel conoce. Este componente muestra las que solo conoce la API
+   (por ejemplo, "el destino debe ser distinto del origen"): pone cada mensaje del 400 junto a su campo, en el mismo
+   EditContext. Para el usuario, los dos tipos de error se ven igual. *@
+@if (generalMessages.Count > 0)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" data-testid="form-errors">
+        @foreach (string message in generalMessages)
+        {
+            <div>@message</div>
+        }
+    </MudAlert>
+}
+
+@code {
+    [CascadingParameter]
+    private EditContext EditContext { get; set; } = default!;
+
+    private readonly List<string> generalMessages = [];
+    private ValidationMessageStore store = default!;
+
+    protected override void OnInitialized()
+    {
+        store = new ValidationMessageStore(EditContext);
+        EditContext.OnValidationRequested += ClearAll;
+        EditContext.OnFieldChanged += ClearField;
+    }
+
+    public void Show(HttpValidationProblemDetails problem)
+    {
+        ClearMessages();
+
+        foreach ((string key, string[] messages) in problem.FieldErrors())
+        {
+            if (FieldNamed(key) is { } field)
+            {
+                store.Add(field, messages);
+            }
+            else
+            {
+                generalMessages.AddRange(messages); // un error que no es de ningún campo del formulario
+            }
+        }
+
+        EditContext.NotifyValidationStateChanged();
+        StateHasChanged();
+    }
+
+    // La API manda la clave con el nombre del JSON ("title"); el modelo del formulario tiene la propiedad "Title".
+    private FieldIdentifier? FieldNamed(string key)
+    {
+        PropertyInfo? property = EditContext.Model.GetType()
+            .GetProperty(key, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+
+        return property is null ? null : new FieldIdentifier(EditContext.Model, property.Name);
+    }
+
+    // Un nuevo intento de envío parte de cero: un error anterior de la API no debe bloquearlo.
+    private void ClearAll(object? sender, ValidationRequestedEventArgs e)
+    {
+        ClearMessages();
+        StateHasChanged();
+    }
+
+    // Al corregir un campo, su mensaje de la API deja de aplicar.
+    private void ClearField(object? sender, FieldChangedEventArgs e)
+    {
+        store.Clear(e.FieldIdentifier);
+        EditContext.NotifyValidationStateChanged();
+    }
+
+    private void ClearMessages()
+    {
+        store.Clear();
+        generalMessages.Clear();
+    }
+
+    public void Dispose()
+    {
+        EditContext.OnValidationRequested -= ClearAll;
+        EditContext.OnFieldChanged -= ClearField;
+    }
+}

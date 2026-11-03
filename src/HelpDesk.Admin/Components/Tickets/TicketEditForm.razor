@@ -1,0 +1,148 @@
+@inject HelpDeskApiClient Client
+
+@* OnValidSubmit solo se ejecuta si DataAnnotationsValidator no encontró errores: esos ni siquiera llegan a la API.
+   "Context" le pone otro nombre al parámetro de EditForm: el de AuthorizeView, más abajo, también se llama context. *@
+<EditForm Model="model" OnValidSubmit="SaveAsync" Context="form">
+    <DataAnnotationsValidator />
+    <ApiValidationErrors @ref="apiErrors" />
+
+    <MudGrid Spacing="2" Class="mb-2">
+        <MudItem xs="12">
+            @* "For" le dice a MudBlazor qué campo del EditContext es este: de ahí saca sus mensajes de error. *@
+            <MudTextField T="string" Label="Título" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          @bind-Value="model.Title" For="@(() => model.Title)" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="TicketPriority" Label="Prioridad" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                       ToStringFunc="@(priority => TicketLabels.Of(priority))"
+                       @bind-Value="model.Priority" For="@(() => model.Priority)">
+                @foreach (TicketPriority priority in Enum.GetValues<TicketPriority>())
+                {
+                    <MudSelectItem T="TicketPriority" Value="priority">@TicketLabels.Of(priority)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="TicketStatus" Label="Estado" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                       ToStringFunc="@(status => TicketLabels.Of(status))"
+                       @bind-Value="model.Status" For="@(() => model.Status)">
+                @foreach (TicketStatus status in Enum.GetValues<TicketStatus>())
+                {
+                    <MudSelectItem T="TicketStatus" Value="status">@TicketLabels.Of(status)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        @* Reasignar es decisión de supervisión. Si un agente lo intentara a mano, la API respondería 403. *@
+        <AuthorizeView Roles="@AdminRoles.Supervision">
+            <MudItem xs="12" sm="4">
+                <MudTextField T="string" Label="Agente" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
+                              @bind-Value="model.AssignedTo" For="@(() => model.AssignedTo)" />
+            </MudItem>
+        </AuthorizeView>
+    </MudGrid>
+
+    @if (conflict is not null && current is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-2" data-testid="edit-conflict">
+            <strong>@conflict.Title</strong>
+            <div>@conflict.Detail</div>
+            <div class="mt-1">
+                Ahora el ticket está así: «@current.Title», @TicketLabels.Of(current.Status!.Value),
+                prioridad @TicketLabels.Of(current.Priority!.Value), @(current.AssignedTo ?? "sin asignar").
+            </div>
+        </MudAlert>
+        <div class="d-flex gap-2 mb-2">
+            <MudButton Variant="Variant.Outlined" OnClick="LoadCurrentAsync">Cargar lo actual (descarta lo mío)</MudButton>
+            @if (current.Status != TicketStatus.Closed)
+            {
+                <MudButton Variant="Variant.Outlined" OnClick="KeepMyChanges">Conservar lo mío</MudButton>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="d-flex gap-2">
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="saving">
+                @(saving ? "Guardando…" : "Guardar")
+            </MudButton>
+            <MudButton Variant="Variant.Text" Disabled="saving" OnClick="() => OnCancelled.InvokeAsync()">Cancelar</MudButton>
+        </div>
+    }
+</EditForm>
+
+@code {
+    [Parameter, EditorRequired]
+    public TicketResponse Ticket { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<TicketResponse> OnSaved { get; set; }
+
+    // Otra persona cambió el ticket y este usuario pidió ver lo actual: el padre debe mostrarlo.
+    [Parameter]
+    public EventCallback<TicketResponse> OnReloaded { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancelled { get; set; }
+
+    private TicketEditModel model = new();
+    private string? version;
+    private ApiValidationErrors? apiErrors;
+    private ProblemDetails? conflict;
+    private TicketResponse? current;
+    private bool saving;
+
+    // OnInitialized: este componente se crea al pulsar "Editar". Copiar en OnParametersSet borraría lo escrito cada vez
+    // que el padre se vuelva a dibujar.
+    protected override void OnInitialized() => StartFrom(Ticket);
+
+    // La versión viaja con el formulario sin mostrarse, como un campo oculto: es la "foto" del ticket que este usuario
+    // vio. La base la compara al guardar (concurrencia optimista) y responde 409 si ya no es la actual.
+    private void StartFrom(TicketResponse ticket)
+    {
+        model = TicketEditModel.From(ticket);
+        version = ticket.Version;
+        conflict = null;
+        current = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        saving = true;
+        try
+        {
+            TicketResponse? saved = await Client.Api.Tickets[Ticket.Id!.Value].PutAsync(model.ToRequest(version));
+            await OnSaved.InvokeAsync(saved);
+        }
+        catch (HttpValidationProblemDetails problem)
+        {
+            apiErrors?.Show(problem);
+        }
+        catch (ProblemDetails problem) when (problem.ResponseStatusCode == StatusCodes.Status409Conflict)
+        {
+            // Dos causas posibles, las dos explicadas en "detail": otra persona guardó antes, o el ticket ya está cerrado.
+            // Lo escrito sigue en el formulario: se muestra lo que hay ahora y el usuario decide.
+            conflict = problem;
+            current = await Client.Api.Tickets[Ticket.Id!.Value].GetAsync();
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task LoadCurrentAsync()
+    {
+        TicketResponse latest = current!;
+        StartFrom(latest);
+        await OnReloaded.InvokeAsync(latest);
+    }
+
+    // Decisión consciente: ya vio lo que cambió la otra persona y aun así prefiere lo suyo. Toma la versión nueva, y la
+    // protección sigue activa para cualquier cambio posterior.
+    private void KeepMyChanges()
+    {
+        version = current!.Version;
+        conflict = null;
+        current = null;
+    }
+}

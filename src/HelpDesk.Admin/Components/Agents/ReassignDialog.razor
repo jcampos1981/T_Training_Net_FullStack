@@ -1,0 +1,99 @@
+@using System.ComponentModel.DataAnnotations
+@inject HelpDeskApiClient Client
+
+<MudDialog>
+    <DialogContent>
+        @* El formulario va dentro de DialogContent y no alrededor de MudDialog: MudBlazor dibuja el contenido del diálogo
+           en otro lugar del árbol, y el EditContext no llegaría hasta los campos. *@
+        <EditForm Model="model" OnValidSubmit="ReassignAsync" Context="form">
+            <DataAnnotationsValidator />
+            <ApiValidationErrors @ref="apiErrors" />
+
+            <MudText Class="mb-3">
+                Se moverán <strong>@OpenTickets.ToString("N0") tickets abiertos</strong> de <strong>@FromAgent</strong> a otro
+                agente, y quedará un comentario en cada uno. No se puede deshacer de una sola vez.
+            </MudText>
+
+            @* CoerceValue: también acepta un nombre que no está en la lista, como un agente nuevo que aún no tiene tickets.
+               La regla "distinto del origen" solo la conoce la API: su 400 aparece aquí, junto al campo. *@
+            <MudAutocomplete T="string" Label="Agente destino" Variant="Variant.Outlined" Margin="Margin.Dense"
+                             CoerceValue="true" ResetValueOnEmptyText="true" SearchFunc="SearchAgentsAsync"
+                             @bind-Value="model.To" For="@(() => model.To)" Class="mb-3" />
+
+            @if (conflictMessage is not null)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3" data-testid="reassign-conflict">@conflictMessage</MudAlert>
+            }
+
+            <div class="d-flex justify-end gap-2 mb-2">
+                <MudButton Variant="Variant.Text" Disabled="working" OnClick="Cancel">Cancelar</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="working">
+                    @(working ? "Reasignando…" : "Reasignar")
+                </MudButton>
+            </div>
+        </EditForm>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public string? FromAgent { get; set; }
+
+    [Parameter]
+    public int OpenTickets { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<string> KnownAgents { get; set; } = [];
+
+    private readonly ReassignModel model = new();
+    private ApiValidationErrors? apiErrors;
+    private string? conflictMessage;
+    private bool working;
+
+    private Task<IEnumerable<string>> SearchAgentsAsync(string? text, CancellationToken cancellationToken)
+    {
+        IEnumerable<string> candidates = KnownAgents.Where(agent =>
+            !string.Equals(agent, FromAgent, StringComparison.OrdinalIgnoreCase)
+            && (string.IsNullOrWhiteSpace(text) || agent.Contains(text, StringComparison.OrdinalIgnoreCase)));
+
+        return Task.FromResult(candidates);
+    }
+
+    private async Task ReassignAsync()
+    {
+        working = true;
+        conflictMessage = null;
+        try
+        {
+            ReassignTicketsResponse? done = await Client.Api.Agents[FromAgent!].Reassign.PostAsync(
+                new ReassignTicketsRequest { To = model.To?.Trim() });
+
+            Dialog.Close(DialogResult.Ok(done));
+        }
+        catch (HttpValidationProblemDetails problem)
+        {
+            apiErrors?.Show(problem);
+        }
+        catch (ProblemDetails problem) when (problem.ResponseStatusCode == StatusCodes.Status409Conflict)
+        {
+            // Otra persona cambió tickets de este agente durante la operación. La transacción se deshizo: se puede reintentar.
+            conflictMessage = problem.Detail;
+        }
+        finally
+        {
+            working = false;
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+    private sealed class ReassignModel
+    {
+        [Required(ErrorMessage = "Indica el agente destino.")]
+        [StringLength(50, ErrorMessage = "El agente no puede superar {1} caracteres.")]
+        public string? To { get; set; }
+    }
+}

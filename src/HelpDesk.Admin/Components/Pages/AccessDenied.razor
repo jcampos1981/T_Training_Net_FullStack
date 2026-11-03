@@ -5,20 +5,29 @@
 
 @* Static SSR: el servidor responde HTML y listo, sin circuito ni WebSocket. Es lo que corresponde aquí: un cliente no
    tiene por qué abrir una conexión con el panel, y además su cuenta no podría (el WebSocket también exige ser del
-   equipo). Por eso esta página no usa MudBlazor. *@
+   equipo). Por eso esta página no usa MudBlazor.
+   Dos casos llegan aquí: un cliente que entró al panel, y un agente que abrió por URL una página de supervisión. *@
 <PageTitle>Acceso denegado · HelpDesk</PageTitle>
 
-<h1>Este panel es para el equipo de soporte</h1>
-
-<AuthorizeView>
+<AuthorizeView Policy="@AdminAuthentication.StaffPolicy" Context="team">
     <Authorized>
-        <p><strong>@context.User.Identity?.Name</strong> no es una cuenta del equipo. Si eres cliente, usa el portal.</p>
-        <form method="post" action="/auth/logout">
-            <AntiforgeryToken />
-            <button type="submit">Cerrar sesión</button>
-        </form>
+        <h1>No tienes permiso para ver esa página</h1>
+        <p>Esa sección es solo para supervisión.</p>
+        <p><a href="/tickets" data-enhance-nav="false">Volver a los tickets</a></p>
     </Authorized>
     <NotAuthorized>
-        <p><a href="/" data-enhance-nav="false">Iniciar sesión</a></p>
+        <h1>Este panel es para el equipo de soporte</h1>
+        @if (team.User.Identity?.IsAuthenticated == true)
+        {
+            <p><strong>@team.User.Identity.Name</strong> no es una cuenta del equipo. Si eres cliente, usa el portal.</p>
+            <form method="post" action="/auth/logout">
+                <AntiforgeryToken />
+                <button type="submit">Cerrar sesión</button>
+            </form>
+        }
+        else
+        {
+            <p><a href="/" data-enhance-nav="false">Iniciar sesión</a></p>
+        }
     </NotAuthorized>
 </AuthorizeView>

@@ -2,6 +2,7 @@ using HelpDesk.Admin.Api;
 using HelpDesk.Admin.Authentication;
 using HelpDesk.Admin.Components;
 using HelpDesk.Admin.Security;
+using MudBlazor;
 using MudBlazor.Services;
 
 // Para probarlo:
@@ -13,7 +14,8 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
-builder.Services.AddMudServices();
+// Los avisos abajo: arriba a la derecha, tapan "Cerrar sesión" durante varios segundos.
+builder.Services.AddMudServices(options => options.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.BottomRight);
 builder.Services.AddAdminAuthentication(); // login con Keycloak, cookie y tokens en el servidor
 builder.Services.AddHelpDeskApi();         // cliente generado de la API, con el token del usuario de cada circuito
 

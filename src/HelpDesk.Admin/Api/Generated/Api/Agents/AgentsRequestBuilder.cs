@@ -52,6 +52,8 @@ namespace HelpDesk.Admin.Api.Generated.Api.Agents
         /// <returns>A List&lt;global::HelpDesk.Admin.Api.Generated.Models.AgentSummaryResponse&gt;</returns>
         /// <param name="cancellationToken">Cancellation token to use when cancelling requests</param>
         /// <param name="requestConfiguration">Configuration for the request such as headers, query parameters, and middleware options.</param>
+        /// <exception cref="global::HelpDesk.Admin.Api.Generated.Models.ProblemDetails">When receiving a 401 status code</exception>
+        /// <exception cref="global::HelpDesk.Admin.Api.Generated.Models.ProblemDetails">When receiving a 403 status code</exception>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
         public async Task<List<global::HelpDesk.Admin.Api.Generated.Models.AgentSummaryResponse>?> GetAsync(Action<RequestConfiguration<DefaultQueryParameters>>? requestConfiguration = default, CancellationToken cancellationToken = default)
@@ -62,7 +64,12 @@ namespace HelpDesk.Admin.Api.Generated.Api.Agents
         {
 #endif
             var requestInfo = ToGetRequestInformation(requestConfiguration);
-            var collectionResult = await RequestAdapter.SendCollectionAsync<global::HelpDesk.Admin.Api.Generated.Models.AgentSummaryResponse>(requestInfo, global::HelpDesk.Admin.Api.Generated.Models.AgentSummaryResponse.CreateFromDiscriminatorValue, default, cancellationToken).ConfigureAwait(false);
+            var errorMapping = new Dictionary<string, ParsableFactory<IParsable>>
+            {
+                { "401", global::HelpDesk.Admin.Api.Generated.Models.ProblemDetails.CreateFromDiscriminatorValue },
+                { "403", global::HelpDesk.Admin.Api.Generated.Models.ProblemDetails.CreateFromDiscriminatorValue },
+            };
+            var collectionResult = await RequestAdapter.SendCollectionAsync<global::HelpDesk.Admin.Api.Generated.Models.AgentSummaryResponse>(requestInfo, global::HelpDesk.Admin.Api.Generated.Models.AgentSummaryResponse.CreateFromDiscriminatorValue, errorMapping, cancellationToken).ConfigureAwait(false);
             return collectionResult?.AsList();
         }
         /// <summary>

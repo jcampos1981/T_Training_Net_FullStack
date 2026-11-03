@@ -1,0 +1,21 @@
+/* table-layout: fixed reparte el ancho en siete columnas iguales: ninguna empuja a las otras fuera del recuadro. */
+.days {
+    width: 100%;
+    margin-top: 0.5rem;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.days th,
+.days td {
+    padding: 0.375rem 0.125rem;
+    text-align: center;
+}
+
+.days th {
+    font-weight: 600;
+    color: var(--mud-palette-text-secondary);
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+}

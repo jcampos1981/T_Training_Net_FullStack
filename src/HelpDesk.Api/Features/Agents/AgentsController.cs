@@ -15,11 +15,18 @@ namespace HelpDesk.Api.Features.Agents;
 [Route("api/agents")]
 [Tags("Agents")]
 [Authorize(Policy = HelpDeskPolicies.Staff)]
+// Los errores también son contrato: declarados aquí, los clientes generados los reciben tipados. Ojo: con cualquier
+// [ProducesResponseType], ASP.NET Core deja de inferir el 200 desde ActionResult<T>, así que cada acción lo declara.
+[ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized, ProblemContentType)]
+[ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden, ProblemContentType)]
 public sealed class AgentsController : ControllerBase
 {
+    private const string ProblemContentType = "application/problem+json";
+
     [HttpGet]
     [Authorize(Policy = HelpDeskPolicies.Supervision)]
     [EndpointSummary("Lista los agentes con su carga de tickets (abiertos y totales). Solo supervisión.")]
+    [ProducesResponseType<IReadOnlyList<AgentSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<AgentSummaryResponse>>> List(
         [FromServices] AgentQueries queries,
         CancellationToken cancellationToken)
@@ -29,6 +36,8 @@ public sealed class AgentsController : ControllerBase
 
     [HttpGet("{name}/tickets")]
     [EndpointSummary("Lista por páginas los tickets de un agente (keyset: ?after=&pageSize=). Un agente solo ve los suyos.")]
+    [ProducesResponseType<CursorPage<TicketResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<HttpValidationProblemDetails>(StatusCodes.Status400BadRequest, ProblemContentType)]
     public async Task<ActionResult<CursorPage<TicketResponse>>> Tickets(
         string name,
         [FromQuery] PageRequest page,
@@ -50,6 +59,9 @@ public sealed class AgentsController : ControllerBase
     [HttpPost("{name}/reassign")]
     [Authorize(Policy = HelpDeskPolicies.Supervision)]
     [EndpointSummary("Reasigna los tickets abiertos de un agente a otro, en una sola transacción. Solo supervisión.")]
+    [ProducesResponseType<ReassignTicketsResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<HttpValidationProblemDetails>(StatusCodes.Status400BadRequest, ProblemContentType)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict, ProblemContentType)]
     public async Task<ActionResult<ReassignTicketsResponse>> Reassign(
         string name,
         ReassignTicketsRequest request,

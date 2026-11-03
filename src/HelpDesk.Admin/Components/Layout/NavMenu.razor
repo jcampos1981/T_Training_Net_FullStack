@@ -1,3 +1,9 @@
 <MudNavMenu>
     <MudNavLink Href="/tickets" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ConfirmationNumber">Tickets</MudNavLink>
+
+    @* Ocultar el enlace es comodidad, no seguridad: la página tiene [Authorize] y la API revisa cada llamada. *@
+    <AuthorizeView Roles="@AdminRoles.Supervision">
+        <MudNavLink Href="/dashboard" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+        <MudNavLink Href="/agentes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.People">Agentes</MudNavLink>
+    </AuthorizeView>
 </MudNavMenu>

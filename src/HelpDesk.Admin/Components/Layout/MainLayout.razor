@@ -4,7 +4,6 @@
 @* Los proveedores de MudBlazor: el tema y las capas donde se dibujan menús, diálogos y avisos. *@
 <MudThemeProvider Theme="AdminTheme.Default" />
 <MudPopoverProvider />
-<MudDialogProvider />
 <MudSnackbarProvider />
 
 <MudLayout>
@@ -27,6 +26,8 @@
                 @* IsFixed: el valor no cambia, así que Blazor no vigila a quienes lo reciben. *@
                 <CascadingValue Value="userTimeZone" IsFixed="true">
                     <ApiErrorBoundary @ref="errorBoundary">
+                        @* Dentro de la barrera: un error en un diálogo también debe llegar a ella, y no terminar el circuito. *@
+                        <MudDialogProvider />
                         @Body
                     </ApiErrorBoundary>
                 </CascadingValue>

@@ -1,0 +1,63 @@
+@* Comparar la carga entre agentes: barras en un solo color, de mayor a menor, con la misma base para poder compararlas.
+   Va dentro de la tabla porque también hay que leer los críticos y la antigüedad. Barras con HTML y CSS: son un ancho
+   proporcional, no hace falta una librería de gráficos. *@
+<MudPaper Outlined="true" Elevation="0" Class="pa-3">
+    <MudText Typo="Typo.h6" HtmlTag="h2" GutterBottom="true">Carga abierta por agente</MudText>
+
+    @if (Rows.Count == 0)
+    {
+        <MudText Class="mud-text-secondary">No hay tickets abiertos.</MudText>
+    }
+    else
+    {
+        <MudSimpleTable Dense="true" Elevation="0" Hover="true">
+            <thead>
+                <tr>
+                    <th>Agente</th>
+                    <th>Abiertos</th>
+                    <th class="number">Críticos</th>
+                    <th class="number">Más antiguo</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (AgentWorkloadRow row in RankedRows)
+                {
+                    <tr @key="row.Agent" data-testid="workload-row">
+                        <td>@row.Agent</td>
+                        <td class="bar-cell">
+                            <div class="bar-track" title="@($"{row.Agent}: {row.OpenTickets:N0} abiertos")">
+                                <div class="bar" style="width: @BarWidth(row)"></div>
+                            </div>
+                            <span class="bar-value">@row.OpenTickets?.ToString("N0")</span>
+                        </td>
+                        <td class="number">@row.CriticalTickets?.ToString("N0")</td>
+                        <td class="number">@AgeText(row.OldestOpenHours)</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<AgentWorkloadRow> Rows { get; set; } = [];
+
+    // La API ordena por críticos primero; unas barras se leen mejor de mayor a menor.
+    private IEnumerable<AgentWorkloadRow> RankedRows => Rows.OrderByDescending(row => row.OpenTickets);
+
+    private int LargestOpenCount => Rows.Max(row => row.OpenTickets ?? 0);
+
+    private string BarWidth(AgentWorkloadRow row)
+    {
+        double percent = LargestOpenCount == 0 ? 0 : 100d * (row.OpenTickets ?? 0) / LargestOpenCount;
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{percent:0.##}%");
+    }
+
+    private static string AgeText(int? hours) => hours switch
+    {
+        null => string.Empty,
+        < 48 => $"{hours} h",
+        _ => $"{hours / 24:N0} días"
+    };
+}

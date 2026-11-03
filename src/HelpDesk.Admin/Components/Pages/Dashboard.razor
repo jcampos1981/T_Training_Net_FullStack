@@ -1,0 +1,56 @@
+@page "/dashboard"
+@attribute [Authorize(Roles = AdminRoles.Supervision)]
+@inject HelpDeskApiClient Client
+
+<PageTitle>Dashboard · HelpDesk</PageTitle>
+
+<div class="d-flex align-center gap-3 mb-3 flex-wrap">
+    <MudText Typo="Typo.h4" HtmlTag="h1">Dashboard</MudText>
+    <MudSpacer />
+    @if (dashboard is not null)
+    {
+        <MudText Typo="Typo.body2" Class="mud-text-secondary" data-testid="dashboard-updated">
+            Actualizado: <DateText Value="dashboard.GeneratedAt" />
+        </MudText>
+    }
+    <MudButton Variant="Variant.Outlined" Disabled="loading" OnClick="LoadAsync">@(loading ? "Actualizando…" : "Actualizar")</MudButton>
+</div>
+
+@if (dashboard is null)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    @* Al actualizar, los datos anteriores siguen en pantalla hasta que llegan los nuevos: la página no salta. *@
+    <StatusTiles Counts="dashboard.TicketsByStatus ?? []" />
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" lg="7">
+            <WorkloadTable Rows="dashboard.OpenWorkload ?? []" />
+        </MudItem>
+        <MudItem xs="12" lg="5">
+            <CommentsTrend Days="dashboard.CommentsLast7Days ?? []" GeneratedAt="dashboard.GeneratedAt ?? DateTimeOffset.UtcNow" />
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private DashboardResponse? dashboard;
+    private bool loading;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        try
+        {
+            dashboard = await Client.Api.Dashboard.GetAsync();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}

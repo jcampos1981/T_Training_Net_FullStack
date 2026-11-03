@@ -1,0 +1,7 @@
+.stat-value {
+    margin-top: 0.5rem;
+    font-size: 2rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--mud-palette-text-primary);
+}

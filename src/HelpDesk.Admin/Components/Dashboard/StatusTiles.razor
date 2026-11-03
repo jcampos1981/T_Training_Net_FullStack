@@ -1,0 +1,21 @@
+@* Cuatro números que se leen de un vistazo: una fila de indicadores, no una dona. Se recorre el enum y no la respuesta de
+   la API, porque un estado sin tickets no viene en el GROUP BY: igual debe aparecer, con 0. *@
+<MudGrid Spacing="3" Class="mb-3">
+    @foreach (TicketStatus status in Enum.GetValues<TicketStatus>())
+    {
+        <MudItem xs="6" md="3">
+            <MudPaper Outlined="true" Elevation="0" Class="pa-3" data-testid="@($"status-{status}")">
+                <StatusChip Status="status" />
+                <div class="stat-value">@TotalOf(status).ToString("N0")</div>
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<StatusCount> Counts { get; set; } = [];
+
+    private int TotalOf(TicketStatus status) =>
+        Counts.FirstOrDefault(count => count.Status == status.ToString())?.Total ?? 0;
+}

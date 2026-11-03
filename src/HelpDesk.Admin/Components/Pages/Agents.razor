@@ -1,0 +1,66 @@
+@page "/agentes"
+@attribute [Authorize(Roles = AdminRoles.Supervision)]
+@inject HelpDeskApiClient Client
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Agentes · HelpDesk</PageTitle>
+
+<MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">Agentes</MudText>
+
+@if (agents is null)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudTable T="AgentSummaryResponse" Items="agents" Dense="true" Hover="true" Outlined="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>Agente</MudTh>
+            <MudTh Class="number-cell">Abiertos</MudTh>
+            <MudTh Class="number-cell">Total</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Agente"><MudLink Href="@($"/tickets?{TicketFilterValues.AgentKey}={Uri.EscapeDataString(context.Name ?? string.Empty)}")">@context.Name</MudLink></MudTd>
+            <MudTd DataLabel="Abiertos" Class="number-cell">@context.OpenTickets?.ToString("N0")</MudTd>
+            <MudTd DataLabel="Total" Class="number-cell">@context.TotalTickets?.ToString("N0")</MudTd>
+            <MudTd>
+                @if (context.OpenTickets > 0)
+                {
+                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="() => ReassignAsync(context)">Reasignar</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<AgentSummaryResponse>? agents;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync() => agents = await Client.Api.Agents.GetAsync() ?? [];
+
+    private async Task ReassignAsync(AgentSummaryResponse agent)
+    {
+        var parameters = new DialogParameters<ReassignDialog>
+        {
+            { dialog => dialog.FromAgent, agent.Name },
+            { dialog => dialog.OpenTickets, agent.OpenTickets ?? 0 },
+            { dialog => dialog.KnownAgents, agents?.Select(known => known.Name ?? string.Empty).ToArray() ?? [] }
+        };
+
+        IDialogReference reference = await Dialogs.ShowAsync<ReassignDialog>(
+            $"Reasignar los tickets de {agent.Name}", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+
+        // Se espera a que el diálogo se cierre: Canceled si pulsó Cancelar, y si no, lo que devolvió con Close().
+        DialogResult? result = await reference.Result;
+
+        if (result is { Canceled: false, Data: ReassignTicketsResponse done })
+        {
+            Snackbar.Add($"Se movieron {done.ReassignedTickets:N0} tickets de {done.From} a {done.To}.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+}

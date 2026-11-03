@@ -39,6 +39,8 @@ namespace HelpDesk.Admin.Api.Generated.Api.Dashboard
         /// <returns>A <see cref="global::HelpDesk.Admin.Api.Generated.Models.DashboardResponse"/></returns>
         /// <param name="cancellationToken">Cancellation token to use when cancelling requests</param>
         /// <param name="requestConfiguration">Configuration for the request such as headers, query parameters, and middleware options.</param>
+        /// <exception cref="global::HelpDesk.Admin.Api.Generated.Models.ProblemDetails">When receiving a 401 status code</exception>
+        /// <exception cref="global::HelpDesk.Admin.Api.Generated.Models.ProblemDetails">When receiving a 403 status code</exception>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
         public async Task<global::HelpDesk.Admin.Api.Generated.Models.DashboardResponse?> GetAsync(Action<RequestConfiguration<DefaultQueryParameters>>? requestConfiguration = default, CancellationToken cancellationToken = default)
@@ -49,7 +51,12 @@ namespace HelpDesk.Admin.Api.Generated.Api.Dashboard
         {
 #endif
             var requestInfo = ToGetRequestInformation(requestConfiguration);
-            return await RequestAdapter.SendAsync<global::HelpDesk.Admin.Api.Generated.Models.DashboardResponse>(requestInfo, global::HelpDesk.Admin.Api.Generated.Models.DashboardResponse.CreateFromDiscriminatorValue, default, cancellationToken).ConfigureAwait(false);
+            var errorMapping = new Dictionary<string, ParsableFactory<IParsable>>
+            {
+                { "401", global::HelpDesk.Admin.Api.Generated.Models.ProblemDetails.CreateFromDiscriminatorValue },
+                { "403", global::HelpDesk.Admin.Api.Generated.Models.ProblemDetails.CreateFromDiscriminatorValue },
+            };
+            return await RequestAdapter.SendAsync<global::HelpDesk.Admin.Api.Generated.Models.DashboardResponse>(requestInfo, global::HelpDesk.Admin.Api.Generated.Models.DashboardResponse.CreateFromDiscriminatorValue, errorMapping, cancellationToken).ConfigureAwait(false);
         }
         /// <summary>
         /// Indicadores: tickets por estado, carga abierta por agente y comentarios de la última semana.

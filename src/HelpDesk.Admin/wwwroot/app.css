@@ -8,6 +8,12 @@ code {
     white-space: nowrap;
 }
 
+/* Global y no aislado: MudTd y MudTh dibujan su propio <td>, que no recibe el atributo de CSS isolation de la página. */
+.number-cell {
+    text-align: right !important;
+    font-variant-numeric: tabular-nums; /* las cifras alineadas en columna */
+}
+
 .ticket-facts {
     max-width: 32rem;
 }

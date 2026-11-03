@@ -1,0 +1,95 @@
+@* Tendencia en el tiempo de una sola serie: una línea. Sin leyenda, porque el título ya dice qué se grafica. La tabla de
+   abajo tiene los mismos números: un gráfico no debe ser la única forma de leer un valor. *@
+<MudPaper Outlined="true" Elevation="0" Class="pa-3">
+    <MudText Typo="Typo.h6" HtmlTag="h2">Comentarios por día</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-2">Últimos 7 días, en UTC</MudText>
+
+    @* MatchBoundsToSize: dibuja al tamaño real del contenedor. Si no, escala el SVG y las etiquetas quedan diminutas. *@
+    <MudChart T="double" ChartType="ChartType.Line" ChartSeries="series" ChartLabels="labels" ChartOptions="options"
+              Width="100%" Height="240px" MatchBoundsToSize="true" />
+
+    @* Una tabla simple y no MudSimpleTable: siete columnas iguales que siempre caben, sin el relleno de la librería. *@
+    <table class="days" data-testid="comments-table">
+        <thead>
+            <tr>
+                @foreach (DayCount day in days)
+                {
+                    <th scope="col">@day.Label</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                @foreach (DayCount day in days)
+                {
+                    <td>@day.Comments.ToString("N0")</td>
+                }
+            </tr>
+        </tbody>
+    </table>
+</MudPaper>
+
+@code {
+    private const int DayCountShown = 7;
+    private const int GridLinesWanted = 4;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<DailyCommentCount> Days { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public DateTimeOffset GeneratedAt { get; set; }
+
+    private IReadOnlyList<DayCount> days = [];
+    private List<ChartSeries<double>> series = [];
+    private string[] labels = [];
+    private LineChartOptions options = new();
+
+    // La API agrupa con GROUP BY: un día sin comentarios no viene. Sin completarlo, la línea uniría dos días lejanos como
+    // si fueran seguidos. También deja fuera el día más antiguo que trae la API, que está cortado (las últimas 168 horas
+    // empiezan a mitad de un día).
+    protected override void OnParametersSet()
+    {
+        DateTime today = GeneratedAt.UtcDateTime.Date;
+        Dictionary<DateTime, int> commentsByDay = Days
+            .Where(day => day.Day is not null)
+            .ToDictionary(day => day.Day!.Value.Date, day => day.Comments ?? 0);
+
+        days = [.. Enumerable.Range(0, DayCountShown)
+            .Select(index => today.AddDays(index - DayCountShown + 1))
+            .Select(day => new DayCount(day.ToString("d MMM"), commentsByDay.GetValueOrDefault(day)))];
+
+        labels = [.. days.Select(day => day.Label)];
+        series = [new ChartSeries<double> { Name = "Comentarios", Data = days.Select(day => (double)day.Comments).ToArray() }];
+
+        int busiestDay = days.Max(day => day.Comments);
+        options = new LineChartOptions
+        {
+            LineStrokeWidth = 2,
+            ShowLegend = false,
+            ChartPalette = ["#2563eb"], // el mismo azul del tema; validado contra el fondo blanco
+            XAxisLines = false,
+            YAxisRequireZeroPoint = true, // el eje parte en 0: si no, una variación pequeña parecería enorme
+            YAxisTicks = RoundStep(busiestDay),
+            YAxisFormat = "N0"
+        };
+    }
+
+    // El valor por defecto de MudBlazor es una línea cada 20: con pocos datos deja el gráfico casi sin escala. Se busca un
+    // paso redondo (1, 2, 5, 10, 20, 50...) que dé unas cuatro líneas.
+    private static int RoundStep(int largest)
+    {
+        if (largest <= GridLinesWanted)
+        {
+            return 1;
+        }
+
+        double rough = (double)largest / GridLinesWanted;
+        double magnitude = Math.Pow(10, Math.Floor(Math.Log10(rough)));
+        double leading = rough / magnitude;
+        double rounded = leading <= 1 ? 1 : leading <= 2 ? 2 : leading <= 5 ? 5 : 10;
+
+        return (int)(rounded * magnitude);
+    }
+
+    private sealed record DayCount(string Label, int Comments);
+}

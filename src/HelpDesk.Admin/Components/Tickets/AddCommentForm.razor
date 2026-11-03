@@ -1,0 +1,62 @@
+@using System.ComponentModel.DataAnnotations
+@inject HelpDeskApiClient Client
+
+@* Al cambiar "draft" por uno nuevo, EditForm crea otro EditContext y rehace lo que tiene dentro: el campo vuelve a
+   quedar vacío y sin mensajes de error. *@
+<EditForm Model="draft" OnValidSubmit="SendAsync" Context="form">
+    <DataAnnotationsValidator />
+    <ApiValidationErrors @ref="apiErrors" />
+
+    <MudTextField T="string" Label="Agregar un comentario" Variant="Variant.Outlined" Lines="3" Class="mb-2"
+                  @bind-Value="draft.Body" For="@(() => draft.Body)" />
+
+    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="sending">
+        @(sending ? "Enviando…" : "Comentar")
+    </MudButton>
+</EditForm>
+
+@code {
+    [Parameter, EditorRequired]
+    public int TicketId { get; set; }
+
+    [Parameter]
+    public EventCallback<CommentResponse> OnAdded { get; set; }
+
+    // Se cerró el ticket mientras se escribía el comentario (409): lleva el motivo que explica la API.
+    [Parameter]
+    public EventCallback<string> OnRejected { get; set; }
+
+    private CommentDraft draft = new();
+    private ApiValidationErrors? apiErrors;
+    private bool sending;
+
+    private async Task SendAsync()
+    {
+        sending = true;
+        try
+        {
+            CommentResponse? added = await Client.Api.Tickets[TicketId].Comments.PostAsync(new AddCommentRequest { Body = draft.Body });
+            draft = new CommentDraft();
+            await OnAdded.InvokeAsync(added);
+        }
+        catch (HttpValidationProblemDetails problem)
+        {
+            apiErrors?.Show(problem);
+        }
+        catch (ProblemDetails problem) when (problem.ResponseStatusCode == StatusCodes.Status409Conflict)
+        {
+            await OnRejected.InvokeAsync(problem.Detail ?? "El ticket ya no admite comentarios.");
+        }
+        finally
+        {
+            sending = false;
+        }
+    }
+
+    private sealed class CommentDraft
+    {
+        [Required(ErrorMessage = "Escribe el comentario.")]
+        [StringLength(2000, ErrorMessage = "El comentario no puede superar {1} caracteres.")]
+        public string? Body { get; set; }
+    }
+}
