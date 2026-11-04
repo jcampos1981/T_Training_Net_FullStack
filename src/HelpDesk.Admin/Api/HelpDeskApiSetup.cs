@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using HelpDesk.Admin.Api.Generated;
 using HelpDesk.Admin.Authentication;
 using HelpDesk.Admin.Realtime;
+using HelpDesk.ServiceDefaults;
 using Microsoft.Extensions.Options;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Kiota.Http.HttpClientLibrary;
@@ -30,7 +31,7 @@ public static class HelpDeskApiSetup
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
-        services.AddHttpClient(HttpClientName);
+        services.AddHttpClient(HttpClientName).AddHelpDeskResilience();
         services.AddScoped<IAccessTokenProvider, CircuitAccessTokenProvider>();
 
         // Scoped = un cliente por circuito, con el token de quien está conectado a ese circuito.

@@ -99,6 +99,49 @@ namespace HelpDesk.Api.Data.Migrations
                     b.ToTable("SlaAlerts", (string)null);
                 });
 
+            modelBuilder.Entity("HelpDesk.Api.Outbox.OutboxMessage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("TraceParent")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Id")
+                        .HasDatabaseName("IX_OutboxMessages_Pending")
+                        .HasFilter("[PublishedAt] IS NULL");
+
+                    b.HasIndex("PublishedAt")
+                        .HasDatabaseName("IX_OutboxMessages_Published")
+                        .HasFilter("[PublishedAt] IS NOT NULL");
+
+                    b.ToTable("OutboxMessages", (string)null);
+                });
+
             modelBuilder.Entity("HelpDesk.Domain.Ticket", b =>
                 {
                     b.Property<int>("Id")

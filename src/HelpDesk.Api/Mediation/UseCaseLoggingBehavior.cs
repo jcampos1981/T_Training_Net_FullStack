@@ -3,7 +3,7 @@ using HelpDesk.Domain;
 namespace HelpDesk.Api.Mediation;
 
 // Cada rechazo de un caso de uso queda en el log, sin que cada handler tenga que acordarse. Solo el nombre y el tipo de fallo:
-// nada de lo que escribió el usuario. En la Fase 11, este es el lugar natural para medir cada caso de uso con OpenTelemetry.
+// nada de lo que escribió el usuario.
 public sealed class UseCaseLoggingBehavior<TRequest, TResponse>(ILogger<UseCaseLoggingBehavior<TRequest, TResponse>> logger)
     : IPipelineBehavior<TRequest, TResponse>
     where TRequest : IRequest<TResponse>

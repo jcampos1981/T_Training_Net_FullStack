@@ -19,6 +19,8 @@ if (HealthProbe.IsRequested(args))
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+builder.AddHelpDeskTelemetry("helpdesk-admin"); // logs, métricas y trazas con OpenTelemetry
+
 builder.Services.AddHelpDeskDataProtection(builder.Configuration, "HelpDesk.Admin"); // cifra la cookie y el antifalsificación
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

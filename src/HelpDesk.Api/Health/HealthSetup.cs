@@ -1,6 +1,7 @@
 using HelpDesk.Api.Background;
 using HelpDesk.Api.Features.Accounts;
 using HelpDesk.Api.Features.Sla;
+using HelpDesk.Api.Outbox;
 using HelpDesk.ServiceDefaults;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -13,7 +14,7 @@ public static class HealthSetup
     // Un orquestador no puede esperar mucho una respuesta: si tarda, da la instancia por caída.
     private static readonly TimeSpan CheckTimeout = TimeSpan.FromSeconds(3);
 
-    public static IServiceCollection AddApiHealthChecks(this IServiceCollection services, ConfigurationOptions? redis)
+    public static IServiceCollection AddApiHealthChecks(this IServiceCollection services, ConfigurationOptions? redis, IConfiguration configuration)
     {
         IHealthChecksBuilder checks = services.AddHealthChecks()
             // Sin base no hay nada que atender: la instancia sale del tráfico.
@@ -25,6 +26,12 @@ public static class HealthSetup
         if (redis is not null)
         {
             checks.AddCheck<RedisHealthCheck>("redis", HealthStatus.Degraded, [HealthEndpoints.ReadyTag], CheckTimeout);
+        }
+
+        // Sin RabbitMQ los eventos esperan en la tabla, y no se pierde ninguno. La API sigue atendiendo.
+        if (OutboxSetup.IsEnabled(configuration))
+        {
+            checks.AddCheck<PeriodicJobHealthCheck<OutboxPublisher>>("outbox", HealthStatus.Degraded, [HealthEndpoints.ReadyTag], CheckTimeout);
         }
 
         return services;

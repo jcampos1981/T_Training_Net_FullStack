@@ -6,6 +6,7 @@ using HelpDesk.Api.Features.Accounts.Tokens;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.IntegrationTests;
 using HelpDesk.Api.IntegrationTests.Support;
+using HelpDesk.Api.Outbox;
 using HelpDesk.Domain;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -13,6 +14,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.MsSql;
+using Testcontainers.RabbitMq;
 
 // Un solo SQL Server y una sola API para toda la corrida: levantar el contenedor tarda demasiado para hacerlo por prueba.
 // Por eso cada prueba crea sus propios datos, y compara contra ellos, no contra totales de la tabla.
@@ -33,6 +35,8 @@ public sealed class HelpDeskApiFactory : WebApplicationFactory<Program>, IAsyncL
         .WithEnvironment("MSSQL_MEMORY_LIMIT_MB", "2048")
         .Build();
 
+    private readonly RabbitMqContainer rabbitMq = new RabbitMqBuilder("rabbitmq:4-alpine").Build();
+
     private readonly ConcurrentDictionary<string, Task<string>> tokens = new();
 
     // Generados en cada corrida: no hay nada que guardar en User Secrets, ni en el repositorio.
@@ -41,9 +45,14 @@ public sealed class HelpDeskApiFactory : WebApplicationFactory<Program>, IAsyncL
 
     public string ConnectionString { get; private set; } = string.Empty;
 
+    public TicketEventsListener Events { get; private set; } = null!;
+
     public async ValueTask InitializeAsync()
     {
-        await sqlServer.StartAsync(Test.Cancel);
+        await Task.WhenAll(sqlServer.StartAsync(Test.Cancel), rabbitMq.StartAsync(Test.Cancel));
+
+        // Antes de que arranque la API: sin una cola enlazada, el publicador no da nada por publicado.
+        Events = await TicketEventsListener.StartAsync(rabbitMq.GetConnectionString(), Test.Cancel);
 
         ConnectionString = new SqlConnectionStringBuilder(sqlServer.GetConnectionString()) { InitialCatalog = Database }.ConnectionString;
 
@@ -77,6 +86,9 @@ public sealed class HelpDeskApiFactory : WebApplicationFactory<Program>, IAsyncL
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:HelpDesk", ConnectionString);
+        builder.UseSetting("ConnectionStrings:RabbitMq", rabbitMq.GetConnectionString());
+        // Un segundo: /health/ready da Degraded si pasan tres vueltas sin terminar, y con las pruebas en paralelo una vuelta puede tardar.
+        builder.UseSetting("Outbox:PublishInterval", "00:00:01");
         builder.UseSetting("Jwt:SigningKey", signingKey);
         builder.UseSetting(DevelopmentSeeder.PasswordKey, password);
         builder.UseSetting("Logging:LogLevel:Default", "Warning");
@@ -116,6 +128,25 @@ public sealed class HelpDeskApiFactory : WebApplicationFactory<Program>, IAsyncL
 
     public TokenRequest CredentialsOf(string user) => new(EmailOf(user), password);
 
+    public async Task<List<OutboxMessage>> OutboxRowsAsync(int ticketId, string type)
+    {
+        await using AsyncServiceScope scope = Services.CreateAsyncScope();
+        HelpDeskDbContext db = scope.ServiceProvider.GetRequiredService<HelpDeskDbContext>();
+
+        return await db.OutboxMessages
+            .AsNoTracking()
+            .Where(message => message.Type == type && message.Payload.Contains($"\"ticketId\":{ticketId},"))
+            .ToListAsync(Test.Cancel);
+    }
+
+    public async Task<bool> IsPublishedAsync(Guid messageId)
+    {
+        await using AsyncServiceScope scope = Services.CreateAsyncScope();
+        HelpDeskDbContext db = scope.ServiceProvider.GetRequiredService<HelpDeskDbContext>();
+
+        return await db.OutboxMessages.AnyAsync(message => message.MessageId == messageId && message.PublishedAt != null, Test.Cancel);
+    }
+
     // Para lo que la API no deja hacer: un ticket creado "hace horas", para las pruebas de SLA.
     public async Task<Ticket> InsertTicketAsync(
         string title,
@@ -145,6 +176,8 @@ public sealed class HelpDeskApiFactory : WebApplicationFactory<Program>, IAsyncL
     public override async ValueTask DisposeAsync()
     {
         await base.DisposeAsync();
+        await Events.DisposeAsync();
+        await rabbitMq.DisposeAsync();
         await sqlServer.DisposeAsync();
     }
 

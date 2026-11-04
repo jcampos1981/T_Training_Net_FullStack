@@ -21,6 +21,8 @@ if (HealthProbe.IsRequested(args))
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+builder.AddHelpDeskTelemetry("helpdesk-bff"); // logs, métricas y trazas con OpenTelemetry
+
 builder.Services.AddProblemDetails();
 builder.Services.AddHelpDeskDataProtection(builder.Configuration, "HelpDesk.Bff"); // cifra la cookie con los tokens
 

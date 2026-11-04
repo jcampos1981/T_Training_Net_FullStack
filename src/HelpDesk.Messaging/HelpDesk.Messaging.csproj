@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Lo que comparten quien publica y quien consume los eventos: el contrato y la topología de RabbitMQ. Nada más: la API y el worker
+       no se conocen entre sí, solo conocen esto. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RabbitMQ.Client" />
+  </ItemGroup>
+
+</Project>

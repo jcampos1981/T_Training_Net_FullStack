@@ -9,11 +9,13 @@ WORKDIR /repo
 # Primero solo lo que define las dependencias: mientras no cambie, Docker reutiliza esta capa y no vuelve a descargar los paquetes.
 COPY global.json Directory.Build.props Directory.Packages.props dotnet-tools.json ./
 COPY src/HelpDesk.Domain/HelpDesk.Domain.csproj src/HelpDesk.Domain/
+COPY src/HelpDesk.Messaging/HelpDesk.Messaging.csproj src/HelpDesk.Messaging/
 COPY src/HelpDesk.ServiceDefaults/HelpDesk.ServiceDefaults.csproj src/HelpDesk.ServiceDefaults/
 COPY src/HelpDesk.Api/HelpDesk.Api.csproj src/HelpDesk.Api/
 RUN dotnet restore src/HelpDesk.Api/HelpDesk.Api.csproj -r linux-x64
 
 COPY src/HelpDesk.Domain/ src/HelpDesk.Domain/
+COPY src/HelpDesk.Messaging/ src/HelpDesk.Messaging/
 COPY src/HelpDesk.ServiceDefaults/ src/HelpDesk.ServiceDefaults/
 COPY src/HelpDesk.Api/ src/HelpDesk.Api/
 # -r linux-x64 deja afuera las librerías nativas de otros sistemas. No es self-contained: el runtime lo pone la imagen base.

@@ -15,6 +15,7 @@ using HelpDesk.Api.Health;
 using HelpDesk.Api.Mediation;
 using HelpDesk.Api.Middleware;
 using HelpDesk.Api.OpenApi;
+using HelpDesk.Api.Outbox;
 using HelpDesk.Api.Security;
 using HelpDesk.ServiceDefaults;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,8 @@ if (HealthProbe.IsRequested(args))
 }
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+builder.AddHelpDeskTelemetry("helpdesk-api"); // logs, métricas y trazas con OpenTelemetry
 
 // ---- Servicios (contenedor de DI): igual que en el Generic Host del importador ----
 builder.Services.AddOpenApi(options => options
@@ -55,6 +58,7 @@ string connectionString = builder.Configuration.GetConnectionString("HelpDesk")
 
 builder.Services.AddSingleton<AuditInterceptor>();
 builder.Services.AddSingleton<SlowQueryInterceptor>();
+builder.Services.AddOutbox(builder.Configuration); // eventos en la misma transacción, y su publicación en RabbitMQ
 builder.Services.AddOptions<SlowQueryOptions>()
     .BindConfiguration(SlowQueryOptions.SectionName)
     .ValidateDataAnnotations()
@@ -70,6 +74,11 @@ builder.Services.AddDbContextPool<HelpDeskDbContext>((provider, options) =>
     options.AddInterceptors(
         provider.GetRequiredService<AuditInterceptor>(),      // UpdatedAt automático
         provider.GetRequiredService<SlowQueryInterceptor>()); // Warning con el SQL de las consultas lentas
+
+    if (provider.GetService<OutboxInterceptor>() is { } outbox)
+    {
+        options.AddInterceptors(outbox);
+    }
 
     if (builder.Environment.IsDevelopment())
     {
@@ -92,7 +101,7 @@ builder.Services.AddDashboardFeature();
 builder.Services.AddPortalFeature();
 builder.Services.AddNotificationsFeature(ConfigureJson, redis);
 builder.Services.AddSlaFeature();
-builder.Services.AddApiHealthChecks(redis);
+builder.Services.AddApiHealthChecks(redis, builder.Configuration);
 
 WebApplication app = builder.Build();
 

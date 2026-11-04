@@ -103,10 +103,12 @@ public sealed class ArchitectureRulesTests
         Assert.Equal(["HelpDesk.Api.Data.DevelopmentSeeder", "Program"], KeepOuterTypes(result.FailingTypeNames ?? []));
     }
 
-    // El panel y el BFF hablan con la API por HTTP, como cualquier cliente. Una referencia al proyecto los acoplaría en silencio.
+    // El panel y el BFF hablan con la API por HTTP, como cualquier cliente, y el worker solo conoce sus eventos. Una referencia al proyecto los
+    // acoplaría en silencio.
     [Theory]
     [InlineData("HelpDesk.Admin")]
     [InlineData("HelpDesk.Bff")]
+    [InlineData("HelpDesk.Worker")]
     public void Frontends_DoNotReferenceTheApi(string project)
     {
         XDocument file = XDocument.Load(Path.Combine(RepositoryRoot(), "src", project, $"{project}.csproj"));

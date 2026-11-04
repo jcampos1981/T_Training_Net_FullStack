@@ -8,6 +8,8 @@ public static class MediationSetup
     public static IServiceCollection AddMediation(this IServiceCollection services, Assembly assembly)
     {
         services.AddScoped<ISender, Sender>();
+        // El primero que se registra envuelve a los demás: la medición incluye todo lo que corre alrededor del caso de uso.
+        services.AddScoped(typeof(IPipelineBehavior<,>), typeof(UseCaseTelemetryBehavior<,>));
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(UseCaseLoggingBehavior<,>));
 
         IEnumerable<(Type Handler, Type Contract)> handlers =

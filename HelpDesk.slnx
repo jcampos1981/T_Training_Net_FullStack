@@ -2,10 +2,13 @@
   <Folder Name="/src/">
     <Project Path="src/HelpDesk.Admin/HelpDesk.Admin.csproj" />
     <Project Path="src/HelpDesk.Api/HelpDesk.Api.csproj" />
+    <Project Path="src/HelpDesk.AppHost/HelpDesk.AppHost.csproj" />
     <Project Path="src/HelpDesk.Bff/HelpDesk.Bff.csproj" />
     <Project Path="src/HelpDesk.Domain/HelpDesk.Domain.csproj" />
     <Project Path="src/HelpDesk.Importer/HelpDesk.Importer.csproj" />
+    <Project Path="src/HelpDesk.Messaging/HelpDesk.Messaging.csproj" />
     <Project Path="src/HelpDesk.ServiceDefaults/HelpDesk.ServiceDefaults.csproj" />
+    <Project Path="src/HelpDesk.Worker/HelpDesk.Worker.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/HelpDesk.Benchmarks/HelpDesk.Benchmarks.csproj" />
@@ -15,5 +18,6 @@
     <Project Path="tests/HelpDesk.Api.UnitTests/HelpDesk.Api.UnitTests.csproj" />
     <Project Path="tests/HelpDesk.ArchitectureTests/HelpDesk.ArchitectureTests.csproj" />
     <Project Path="tests/HelpDesk.Domain.Tests/HelpDesk.Domain.Tests.csproj" />
+    <Project Path="tests/HelpDesk.Worker.IntegrationTests/HelpDesk.Worker.IntegrationTests.csproj" />
   </Folder>
 </Solution>

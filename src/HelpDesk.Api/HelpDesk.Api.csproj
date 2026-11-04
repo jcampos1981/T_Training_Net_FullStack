@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\HelpDesk.Domain\HelpDesk.Domain.csproj" />
+    <ProjectReference Include="..\HelpDesk.Messaging\HelpDesk.Messaging.csproj" />
     <ProjectReference Include="..\HelpDesk.ServiceDefaults\HelpDesk.ServiceDefaults.csproj" />
   </ItemGroup>
 

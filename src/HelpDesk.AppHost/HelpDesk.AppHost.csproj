@@ -1,0 +1,30 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.6.4">
+
+  <!-- Levanta toda la aplicación en desarrollo con un solo comando, y abre un dashboard con sus logs, trazas y métricas:
+         dotnet run -/-project src/HelpDesk.AppHost -/-launch-profile http
+       (son dos guiones juntos; un comentario de XML no los admite). Instrucciones en README.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsAspireHost>true</IsAspireHost>
+    <!-- Avisa que no se usa la CLI de Aspire. No hace falta: el orquestador y el dashboard vienen de NuGet, con la versión de este proyecto. -->
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.JavaScript" />
+    <PackageReference Include="Aspire.Hosting.RabbitMQ" />
+    <PackageReference Include="Aspire.Hosting.Redis" />
+    <PackageReference Include="Aspire.Hosting.SqlServer" />
+    <!-- Aspire.Hosting.SqlServer pide la 7, y las aplicaciones usan la 6 de EF Core 10. Este proceso solo orquesta, y no carga sus ensamblados. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" VersionOverride="7.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HelpDesk.Admin\HelpDesk.Admin.csproj" />
+    <ProjectReference Include="..\HelpDesk.Api\HelpDesk.Api.csproj" />
+    <ProjectReference Include="..\HelpDesk.Bff\HelpDesk.Bff.csproj" />
+    <ProjectReference Include="..\HelpDesk.Worker\HelpDesk.Worker.csproj" />
+  </ItemGroup>
+
+</Project>
