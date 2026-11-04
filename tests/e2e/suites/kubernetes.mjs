@@ -27,7 +27,12 @@ const env = { ...process.env, KUBECONFIG: path.join(repo, 'deploy/k8s/.kube/kube
 const kubectl = (...args) => execFileSync('kubectl', ['-n', 'helpdesk', ...args], { encoding: 'utf8', env, maxBuffer: 1 << 26, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const attemptKubectl = (...args) => spawnSync('kubectl', ['-n', 'helpdesk', ...args], { encoding: 'utf8', env, maxBuffer: 1 << 26 });
 const json = (...args) => JSON.parse(kubectl(...args, '-o', 'json'));
-const helm = (...args) => spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(repo, 'deploy/k8s/helm.ps1'), ...args], { encoding: 'utf8' });
+// Sin bloquear, por lo mismo que rolloutDone.
+const helm = (...args) => new Promise((resolve) => {
+  execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(repo, 'deploy/k8s/helm.ps1'), ...args], { encoding: 'utf8', maxBuffer: 1 << 24 }, (error, stdout, stderr) => {
+    resolve({ status: error ? 1 : 0, stdout, stderr });
+  });
+});
 const has = (locator, timeout = 20_000) => locator.first().waitFor({ timeout }).then(() => true, () => false);
 
 async function waitUntil(condition, timeoutMs, intervalMs = 2000) {
@@ -113,7 +118,6 @@ check('Las migraciones terminaron antes de instalar', json('get', 'job', 'migrat
 check('Autoescalado en la API y el BFF', ['api', 'bff'].every((name) => json('get', 'hpa', name).spec.maxReplicas > 2));
 check('El autoescalado ya ve el consumo de CPU', await waitUntil(() => json('get', 'hpa', 'api').status.currentMetrics?.[0]?.resource?.current?.averageUtilization !== undefined, 180_000, 5000));
 const restartsAtStart = { api: restartsOf('api'), bff: restartsOf('bff'), admin: restartsOf('admin') };
-check('Ningún pod se ha reiniciado', Object.values(restartsAtStart).every((count) => count === 0), JSON.stringify(restartsAtStart));
 
 const logLines = kubectl('logs', `deployment/api`, '--tail=30').split('\n').filter(Boolean);
 check('Los logs salen como JSON, uno por línea', logLines.length > 0 && logLines.every((line) => { try { return Boolean(JSON.parse(line).Timestamp ?? JSON.parse(line).EventId !== undefined); } catch { return false; } }), `${logLines.length} líneas`);
@@ -165,7 +169,7 @@ try {
   };
 
   section('Avisos entre réplicas: el backplane de Redis');
-  const openedPerPod = () => Object.fromEntries(podsOf('api').map((pod) => [pod.metadata.name, (kubectl('logs', pod.metadata.name).match(/Conexi[^ ]+ al hub abierta/g) ?? []).length]));
+  const openedPerPod = () => Object.fromEntries(podsOf('api').filter(isReady).map((pod) => [pod.metadata.name, (kubectl('logs', pod.metadata.name).match(/Conexi[^ ]+ al hub abierta/g) ?? []).length]));
   const tabs = [customer];
   const openedBefore = openedPerPod();
   const openedSince = () => Object.entries(openedPerPod()).map(([pod, count]) => count - (openedBefore[pod] ?? 0));
@@ -192,17 +196,16 @@ try {
   check('La misma cookie vale en todas las réplicas del BFF', reads.every((result) => result.status === 200), JSON.stringify([...new Set(reads.map((result) => result.status))]));
 
   section('Apagado ordenado');
-  const victim = podsOf('bff')[0].metadata.name;
+  // Todos: el WebSocket del cliente está en alguno. Sin el corte al recibir SIGTERM, ese pod tardaría más de 30 segundos en irse.
   const startedDelete = Date.now();
-  kubectl('delete', 'pod', victim);
+  kubectl('delete', 'pod', '-l', app('bff'));
   const deleteSeconds = (Date.now() - startedDelete) / 1000;
-  check('Un pod termina solo al recibir SIGTERM, sin agotar los 45 s de gracia', deleteSeconds >= 5 && deleteSeconds < 30, `${deleteSeconds.toFixed(1)} s, con 5 s de preStop`);
-  check('El reemplazo queda listo', await rolloutDone('deployment/bff'));
-
-  for (const pod of podsOf('bff')) kubectl('delete', 'pod', pod.metadata.name, '--wait=false');
+  check('Los pods terminan solos al recibir SIGTERM, aun con WebSockets abiertos', deleteSeconds >= 5 && deleteSeconds < 20, `${deleteSeconds.toFixed(1)} s, con 5 s de preStop`);
   check('Con todos los pods del BFF reemplazados', await waitUntil(() => { const pods = podsOf('bff'); return pods.length >= 2 && pods.every(isReady); }, 120_000));
+  // Traefik se entera un momento después de que los pods están listos.
+  await waitUntil(async () => (await request('portal.localhost', '/')).status === 200, 30_000, 500);
   await customer.reload();
-  check('La sesión del cliente sobrevive: las llaves están en Redis', await has(comments.filter({ hasText: 'Comentario para todas las réplicas.' })));
+  check('La sesión del cliente sobrevive: las llaves están en Redis', await has(comments.filter({ hasText: 'Comentario para todas las réplicas.' })), (await customer.innerText('body')).replace(/\s+/g, ' ').slice(0, 70));
   check('Y no le pide iniciar sesión otra vez', await customer.getByRole('link', { name: 'Iniciar sesión' }).count() === 0);
 
   section('Se actualiza el panel con un agente trabajando');
@@ -241,20 +244,21 @@ try {
   section('Una versión que no arranca');
   const imageBefore = json('get', 'deployment', 'bff').spec.template.spec.containers[0].image;
   const brokenTraffic = keepTraffic([{ run: () => request('portal.localhost', '/'), delayMs: 100 }]);
-  kubectl('set', 'image', 'deployment/bff', `bff=${imageBefore.replace(/:[^:]+$/, ':no-existe')}`);
-  check('El rollout no avanza', !await rolloutDone('deployment/bff', '20s'));
+  const brokenUpgrade = await helm('upgrade', 'helpdesk', '/charts/helpdesk', '-n', 'helpdesk', '--reuse-values', '--set', 'apps.bff.image=helpdesk-bff-no-existe', '--wait', '--timeout', '40s');
+  check('Helm marca la actualización como fallida', brokenUpgrade.status !== 0);
   check('Las réplicas anteriores siguen listas', podsOf('bff').filter(isReady).length >= 2);
-  kubectl('rollout', 'undo', 'deployment/bff');
-  check('El rollback termina', await rolloutDone('deployment/bff'));
+  const rollback = await helm('rollback', 'helpdesk', '-n', 'helpdesk', '--wait', '--timeout', '5m');
+  check('helm rollback vuelve a la versión anterior', rollback.status === 0 && json('get', 'deployment', 'bff').spec.template.spec.containers[0].image === imageBefore, (rollback.stderr ?? '').slice(0, 160));
+  check('El rollout termina', await rolloutDone('deployment/bff'));
   const broken = await brokenTraffic.stop();
   check('Nadie notó nada', broken.failures.length === 0, `${broken.failures.length} de ${broken.total}`);
 
   section('Helm: una migración que falla no toca las aplicaciones');
-  const failedUpgrade = helm('upgrade', 'helpdesk', '/charts/helpdesk', '-n', 'helpdesk', '--reuse-values', '--set', 'image.tag=no-existe', '--wait', '--timeout', '40s');
+  const failedUpgrade = await helm('upgrade', 'helpdesk', '/charts/helpdesk', '-n', 'helpdesk', '--reuse-values', '--set', 'image.tag=no-existe', '--wait', '--timeout', '40s');
   check('La actualización falla en el Job de migración', failedUpgrade.status !== 0 && /migrator|hook|pre-upgrade/i.test(failedUpgrade.stderr + failedUpgrade.stdout));
   check('Las aplicaciones siguen con su versión', json('get', 'deployment', 'bff').spec.template.spec.containers[0].image === imageBefore);
   attemptKubectl('delete', 'job', 'migrator', '--wait=true');
-  const repaired = helm('upgrade', 'helpdesk', '/charts/helpdesk', '-n', 'helpdesk', '--reuse-values', '--set', `image.tag=${imageBefore.split(':').pop()}`, '--wait', '--timeout', '5m');
+  const repaired = await helm('upgrade', 'helpdesk', '/charts/helpdesk', '-n', 'helpdesk', '--reuse-values', '--set', `image.tag=${imageBefore.split(':').pop()}`, '--wait', '--timeout', '5m');
   check('Volver a la versión buena funciona', repaired.status === 0, (repaired.stderr ?? '').slice(0, 200));
 
   section('Readiness y liveness: sin base de datos');

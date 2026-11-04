@@ -15,6 +15,10 @@ Set-Location $repo
 $env:KUBECONFIG = "$repo\deploy\k8s\.kube\kubeconfig.yaml"
 $helm = "$PSScriptRoot\helm.ps1"
 
+# Helm 4 aplica con server-side apply: si alguien cambió un campo a mano (kubectl set image), ese campo ya no es suyo y el upgrade falla por
+# conflicto. Este script instala el estado que dice el repositorio, así que ese estado manda. Mejor no cambiar a mano lo que es del chart.
+$takeOwnership = '--force-conflicts'
+
 function Assert-Ok([string]$step) {
     if ($LASTEXITCODE -ne 0) { throw "Fallo: $step" }
 }
@@ -39,7 +43,7 @@ if ($Local) {
     Assert-Ok 'importar imagenes'
 
     Write-Output '--- HelpDesk (nuestro chart, con imagenes locales)'
-    powershell -NoProfile -File $helm upgrade --install helpdesk /charts/helpdesk -n helpdesk -f /values/values.local.yaml --wait --timeout 8m
+    powershell -NoProfile -File $helm upgrade --install helpdesk /charts/helpdesk -n helpdesk -f /values/values.local.yaml --wait --timeout 8m $takeOwnership
     Assert-Ok 'HelpDesk'
 
     # El tag "local" no cambia entre versiones: sin esto, Kubernetes no se entera de que hay una imagen nueva.
@@ -50,7 +54,7 @@ if ($Local) {
 }
 else {
     Write-Output "--- HelpDesk (nuestro chart, $ImageTag)"
-    powershell -NoProfile -File $helm upgrade --install helpdesk /charts/helpdesk -n helpdesk --set "image.tag=$ImageTag" --wait --timeout 8m
+    powershell -NoProfile -File $helm upgrade --install helpdesk /charts/helpdesk -n helpdesk --set "image.tag=$ImageTag" --wait --timeout 8m $takeOwnership
 }
 Assert-Ok 'HelpDesk'
 

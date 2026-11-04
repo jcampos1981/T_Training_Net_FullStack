@@ -41,7 +41,7 @@ public static class ApiProxy
     {
         app.MapReverseProxy(proxy =>
         {
-            proxy.Use(CloseWebSocketsOnShutdownAsync);
+            proxy.Use(CloseHubConnectionsOnShutdownAsync);
             proxy.Use(RequireAntiforgeryHeaderAsync);
             proxy.Use(RequireLiveAccessTokenAsync);
         });
@@ -50,9 +50,12 @@ public static class ApiProxy
 
     // Al apagarse, Kestrel espera a que terminen las peticiones en curso, hasta 30 segundos, y un WebSocket reenviado no termina nunca: cada
     // pod tardaba eso en irse. Las peticiones normales sí se dejan terminar. El portal se reconecta a otro pod y se pone al día solo.
-    private static async Task CloseWebSocketsOnShutdownAsync(HttpContext context, Func<Task> next)
+    //
+    // Por la ruta y no con context.WebSockets.IsWebSocketRequest: eso solo funciona con UseWebSockets(), que un proxy no necesita, y sin él
+    // siempre dice que no.
+    private static async Task CloseHubConnectionsOnShutdownAsync(HttpContext context, Func<Task> next)
     {
-        if (!context.WebSockets.IsWebSocketRequest)
+        if (!context.Request.Path.StartsWithSegments("/hubs"))
         {
             await next();
             return;
