@@ -1,0 +1,11 @@
+# k3s instala Traefik con Helm, y este recurso le agrega valores: activa Gateway API, que viene apagado.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    providers:
+      kubernetesGateway:
+        enabled: true

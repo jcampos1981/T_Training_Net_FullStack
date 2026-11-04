@@ -1,0 +1,104 @@
+# start-dev: base H2 dentro del pod, sin volumen. Al recrearse vuelve al realm del archivo, y se pierden las sesiones de Keycloak.
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: helpdesk
+spec:
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - name: http
+      port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: helpdesk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.8.1
+          args: [start-dev, --import-realm]
+          env:
+            - { name: KC_HOSTNAME, value: "https://keycloak.localhost:8443" }
+            # Las direcciones que usa el servidor salen con el host por el que preguntó (keycloak:8080).
+            - { name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC, value: "true" }
+            # Traefik termina el TLS y avisa con X-Forwarded-*.
+            - { name: KC_HTTP_ENABLED, value: "true" }
+            - { name: KC_PROXY_HEADERS, value: xforwarded }
+            - { name: KC_HEALTH_ENABLED, value: "true" }
+            - { name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin }
+            - { name: HELPDESK_BFF_PUBLIC_URL, value: "https://portal.localhost:8443" }
+            - { name: HELPDESK_ADMIN_PUBLIC_URL, value: "https://panel.localhost:8443" }
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: helpdesk-secrets, key: keycloak-admin-password } }
+            - name: HELPDESK_DEV_PASSWORD
+              valueFrom: { secretKeyRef: { name: helpdesk-secrets, key: demo-password } }
+            - name: HELPDESK_BFF_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: helpdesk-secrets, key: bff-client-secret } }
+            - name: HELPDESK_ADMIN_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: helpdesk-secrets, key: admin-client-secret } }
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: management, containerPort: 9000 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: { cpu: 250m, memory: 768Mi }
+            limits: { cpu: "2", memory: 1536Mi }
+          startupProbe:
+            httpGet: { path: /health/started, port: management }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health/ready, port: management }
+            periodSeconds: 10
+          volumeMounts:
+            - name: realm
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+      volumes:
+        - name: realm
+          configMap:
+            name: keycloak-realm
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak
+  namespace: helpdesk
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: keycloak.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  name: http

@@ -1,0 +1,20 @@
+# Lo que la aplicación necesita y no es de ella. En producción, SQL Server sería una base administrada y Keycloak un servicio aparte:
+# por eso no está en el chart. Se aplica con (el realm está fuera de esta carpeta, y kustomize no sale de ella por defecto):
+#   kubectl kustomize --load-restrictor LoadRestrictionsNone deploy/k8s/infrastructure | kubectl apply -f -
+#
+# Kustomize parte de YAML común y le aplica parches, sin plantillas. Aquí, además, genera el ConfigMap del realm con un sufijo que
+# depende de su contenido: si el archivo cambia, cambia el nombre, y Keycloak se reinicia solo.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - traefik.yaml
+  - sqlserver.yaml
+  - keycloak.yaml
+
+configMapGenerator:
+  - name: keycloak-realm
+    namespace: helpdesk
+    files:
+      - helpdesk-realm.json=../../keycloak/helpdesk-realm.json

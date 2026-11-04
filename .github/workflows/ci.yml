@@ -61,13 +61,20 @@ jobs:
       - run: npm run build
 
   infrastructure:
-    name: Compilar las plantillas de Azure
+    name: Revisar las plantillas de Azure y Kubernetes
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Revisa sintaxis, tipos y las reglas de Bicep, sin una cuenta de Azure. No prueba que el despliegue funcione.
       - run: az bicep build --file deploy/azure/main.bicep --stdout > /dev/null
+      # Que el chart y los manifiestos se puedan generar. No los aplica a un clúster: eso lo prueba la suite e2e "kubernetes".
+      - name: Revisar el chart de Helm
+        run: |
+          helm lint deploy/helm/helpdesk --set image.tag=ci
+          helm template helpdesk deploy/helm/helpdesk --set image.tag=ci > /dev/null
+      - name: Generar los manifiestos de Kustomize
+        run: kubectl kustomize --load-restrictor LoadRestrictionsNone deploy/k8s/infrastructure > /dev/null
 
   smoke:
     name: La aplicación completa arranca

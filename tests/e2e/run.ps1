@@ -3,6 +3,7 @@
 #   powershell -File tests/e2e/run.ps1 -Suite health,cache    solo esas
 #   powershell -File tests/e2e/run.ps1 -Long                  ademas espera el vencimiento real del token (5 min por suite)
 #   powershell -File tests/e2e/run.ps1 -Suite containers -NoBuild    la aplicacion en contenedores (no entra en "todas")
+#   powershell -File tests/e2e/run.ps1 -Suite kubernetes -NoBuild    la aplicacion en el cluster de deploy/k8s, ya instalada (tampoco)
 param(
     [string[]]$Suite = @('all'),
     [switch]$Long,
@@ -127,6 +128,7 @@ $containers = {
 $Suite = @($Suite -split ',')
 $selected = if ($Suite -contains 'all') { @($definitions.Keys) } else { $Suite }
 $definitions['containers'] = $containers
+$definitions['kubernetes'] = { node "$suites\kubernetes.mjs" $root $shots $repo }
 foreach ($name in $selected) {
     if (-not $definitions.Contains($name)) { throw "No existe la suite '$name'. Disponibles: $($definitions.Keys -join ', ')" }
 }

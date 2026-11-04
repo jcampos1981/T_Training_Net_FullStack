@@ -1,0 +1,6 @@
+apiVersion: v2
+name: helpdesk
+description: La aplicación HelpDesk (API, BFF con el portal, y panel). SQL Server, Redis y Keycloak van aparte.
+type: application
+version: 0.1.0
+appVersion: "1.0"

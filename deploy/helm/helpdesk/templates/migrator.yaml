@@ -1,0 +1,42 @@
+{{- /* Corre antes de instalar y antes de cada actualización: si falla, Helm no toca las aplicaciones. Por eso cada migración debe seguir
+sirviéndole al código anterior, que sigue atendiendo mientras tanto. */ -}}
+{{- $context := dict "root" . "name" "migrator" "image" .Values.migrator.image -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrator
+  labels: {{- include "helpdesk.labels" $context | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    # El Job anterior se borra recién al crear el siguiente: así quedan sus logs para revisarlos.
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels: {{- include "helpdesk.labels" $context | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrator
+          image: {{ include "helpdesk.image" $context }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            # El ejecutable es de archivo único: al arrancar extrae sus librerías nativas, y el disco de la imagen es de solo lectura.
+            - name: DOTNET_BUNDLE_EXTRACT_BASE_DIR
+              value: /tmp
+            - name: ConnectionStrings__HelpDesk
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: connection-string
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml .Values.migrator.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

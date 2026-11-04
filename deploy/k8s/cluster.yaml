@@ -1,0 +1,48 @@
+# Un clúster de Kubernetes de un nodo, desechable, dentro de un contenedor: k3s, una distribución certificada y liviana. No instala
+# nada en la máquina ni toca Docker Desktop, y su configuración de kubectl queda en deploy/k8s/.kube, no en ~/.kube/config.
+#
+#   docker compose -f deploy/k8s/cluster.yaml up -d --wait
+#   $env:KUBECONFIG = "$PWD\deploy\k8s\.kube\kubeconfig.yaml"       # en esta terminal, kubectl apunta a este clúster
+#   docker compose -f deploy/k8s/cluster.yaml down -v               # lo borra todo
+#
+# Trae Traefik (Ingress y Gateway API), metrics-server (para el autoescalado) y un provisionador de volúmenes locales.
+# privileged: k3s necesita crear contenedores dentro del contenedor. Por eso es solo para practicar en la máquina propia.
+
+name: helpdesk-k8s
+
+services:
+  k3s:
+    image: rancher/k3s:v1.36.5-k3s1
+    hostname: helpdesk-k3s # es el nombre del nodo: si cambiara al recrear el contenedor, quedaría un nodo fantasma
+    command:
+      - server
+      - --tls-san=127.0.0.1
+    privileged: true
+    tmpfs:
+      - /run
+      - /var/run
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
+    environment:
+      K3S_KUBECONFIG_OUTPUT: /output/kubeconfig.yaml
+      K3S_KUBECONFIG_MODE: "644"
+    volumes:
+      - k3s-data:/var/lib/rancher/k3s
+      - ./.kube:/output
+    ports:
+      - "127.0.0.1:6443:6443" # la API de Kubernetes, para kubectl
+      - "127.0.0.1:8443:443"  # Traefik, la entrada a la aplicación
+      - "[::1]:8443:443"
+      - "127.0.0.1:8088:80"   # el puerto http de Traefik, para probar Gateway API
+    healthcheck:
+      test: ["CMD", "kubectl", "get", "--raw", "/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  k3s-data:

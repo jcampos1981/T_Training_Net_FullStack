@@ -1,0 +1,127 @@
+# Los valores por defecto son los del clúster local de deploy/k8s. Otro ambiente los reemplaza con su propio archivo (-f).
+# Aquí no va ningún secreto: el chart solo nombra las llaves de un Secret que se crea aparte (deploy/k8s/create-secrets.ps1).
+
+image:
+  registry: ghcr.io/jcampos1981
+  # Un sha-<commit> de los que publica CI. Obligatorio: "latest" no dice qué código corre, y Kubernetes no sabría que cambió.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+secretName: helpdesk-secrets
+
+# Lo que comparten las tres aplicaciones.
+commonEnv:
+  # Una línea JSON por evento, a stdout: el clúster guarda los logs y cualquier colector los entiende.
+  Logging__Console__FormatterName: json
+  # La dirección que ve el navegador, y la que viene en el "iss" de los tokens.
+  Keycloak__Authority: https://keycloak.localhost:8443/realms/helpdesk
+  # La que alcanzan los pods. Es http, y solo existe dentro del clúster.
+  Keycloak__MetadataAddress: http://keycloak:8080/realms/helpdesk/.well-known/openid-configuration
+  Keycloak__RequireHttpsMetadata: "false"
+
+commonSecretEnv:
+  # Las llaves de Data Protection, compartidas: lo que cifra un pod lo abre otro.
+  DataProtection__RedisConnection: redis-connection
+
+# Lo que se aplica a cada contenedor. Es lo que exige el nivel "restricted" de Pod Security Standards.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1654 # el usuario de las imágenes chiseled
+  runAsGroup: 1654
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# Al recibir SIGTERM, ASP.NET Core deja de aceptar peticiones y espera las que están en curso, hasta 30 segundos. Antes, preStop espera
+# unos segundos: el pod sigue recibiendo tráfico mientras la noticia de que se va llega a Traefik y a kube-proxy.
+shutdown:
+  preStopSeconds: 5
+  terminationGracePeriodSeconds: 45
+
+# Cuánto espera una réplica nueva a arrancar: la API tarda más la primera vez que toca la base.
+probes:
+  startup:
+    periodSeconds: 2
+    failureThreshold: 60
+  liveness:
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 5
+    timeoutSeconds: 5 # /health/ready revisa dependencias, cada una con su límite de 2 o 3 segundos
+    failureThreshold: 2
+
+apps:
+  api:
+    image: helpdesk-api
+    # Limita la CPU de cada pod: el GC y el pool de hilos de .NET se dimensionan con ese límite, y el heap con el 75 % de la memoria.
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: "1", memory: 512Mi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 5, targetCPUUtilization: 70 }
+    env: {}
+    secretEnv:
+      ConnectionStrings__HelpDesk: connection-string
+      ConnectionStrings__Redis: redis-connection
+      Jwt__SigningKey: jwt-signing-key
+
+  bff:
+    image: helpdesk-bff
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 256Mi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 4, targetCPUUtilization: 70 }
+    host: portal.localhost
+    env:
+      # Traefik termina el TLS y avisa con X-Forwarded-Proto. Esto hace que ASP.NET Core le crea, venga de la IP que venga: solo los
+      # pods de Traefik llegan hasta aquí.
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      ReverseProxy__Clusters__helpdesk-api__Destinations__api__Address: http://api:8080/
+    secretEnv:
+      Keycloak__ClientSecret: bff-client-secret
+
+  admin:
+    image: helpdesk-admin
+    # Sin autoescalado: cada circuito de Blazor vive en un pod, así que uno nuevo no le quita carga a los que ya están.
+    replicas: 2
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: "1", memory: 512Mi }
+    autoscaling: { enabled: false }
+    host: panel.localhost
+    # El circuito y los tokens de la sesión están en la memoria de un pod: cada navegador tiene que seguir yendo al mismo. Si ese pod se
+    # va, el navegador cae en otro, que no conoce la sesión, y Keycloak lo deja entrar de nuevo sin pedir contraseña.
+    stickySessions: true
+    env:
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      HelpDeskApi__BaseUrl: http://api:8080
+    secretEnv:
+      Keycloak__ClientSecret: admin-client-secret
+
+migrator:
+  image: helpdesk-migrator
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: "1", memory: 512Mi }
+
+# Se quitan réplicas solo después de un minuto sin carga, para no ir y volver cuando el tráfico sube y baja.
+scaleDownStabilizationSeconds: 60
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+
+# Gateway API, el sucesor de Ingress. En http y solo para el portal: es para compararlos.
+gateway:
+  enabled: true
+  className: traefik
+  host: portal-gateway.localhost

@@ -1,0 +1,20 @@
+# Valores para el chart oficial de Valkey, de terceros: https://valkey.io/valkey-helm/
+# Valkey es el fork de código abierto de Redis, compatible con el mismo protocolo y los mismos clientes.
+fullnameOverride: redis
+
+auth:
+  enabled: true
+  usersExistingSecret: helpdesk-secrets
+  aclUsers:
+    default:
+      permissions: "~* &* +@all"
+      passwordKey: redis-password
+
+# Aquí están las llaves de Data Protection: si se pierden, todos tienen que volver a iniciar sesión.
+dataStorage:
+  enabled: true
+  requestedSize: 1Gi
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { cpu: 500m, memory: 256Mi }

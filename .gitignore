@@ -486,3 +486,6 @@ $RECYCLE.BIN/
 
 # Resúmenes de estudio: solo locales, no se publican
 /docs/resumen-*.md
+
+# La configuración de kubectl del clúster local (deploy/k8s/cluster.yaml): trae sus credenciales.
+deploy/k8s/.kube/

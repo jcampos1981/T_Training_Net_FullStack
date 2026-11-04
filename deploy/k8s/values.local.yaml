@@ -1,0 +1,5 @@
+# Para probar imágenes construidas en la máquina, sin publicarlas: install.ps1 -Local las importa al clúster.
+image:
+  registry: docker.io/library
+  tag: local
+  pullPolicy: Never # si la imagen no se importó, falla enseguida en vez de buscarla en internet

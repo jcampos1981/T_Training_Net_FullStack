@@ -1,0 +1,159 @@
+{{- /* Una sola plantilla para las tres aplicaciones: se diferencian únicamente en sus valores (apps.* en values.yaml). */ -}}
+{{- $root := . -}}
+{{- range $name, $app := .Values.apps }}
+{{- $context := dict "root" $root "name" $name "image" $app.image }}
+{{- $env := merge (dict) $app.env $root.Values.commonEnv }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels: {{- include "helpdesk.labels" $context | nindent 4 }}
+data: {{- toYaml $env | nindent 2 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "helpdesk.labels" $context | nindent 4 }}
+spec:
+  {{- if not $app.autoscaling.enabled }}
+  replicas: {{ $app.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0 # primero entra la réplica nueva, y solo si queda lista sale una vieja
+  selector:
+    matchLabels: {{- include "helpdesk.selectorLabels" $context | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "helpdesk.labels" $context | nindent 8 }}
+      annotations:
+        # Un ConfigMap que cambia no reinicia a nadie por sí solo. Con esto, cambia la plantilla del pod y hay un rollout.
+        checksum/config: {{ toJson $env | sha256sum }}
+    spec:
+      terminationGracePeriodSeconds: {{ $root.Values.shutdown.terminationGracePeriodSeconds }}
+      automountServiceAccountToken: false # no le habla a la API de Kubernetes
+      securityContext: {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "helpdesk.image" $context }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: {{ $name }}
+          env: {{- include "helpdesk.secretEnv" (dict "secret" $root.Values.secretName "values" (merge (dict) $app.secretEnv $root.Values.commonSecretEnv)) | nindent 12 }}
+          securityContext: {{- toYaml $root.Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml $app.resources | nindent 12 }}
+          # Mientras arranca, las otras dos no cuentan. Sin esto, una API lenta en su primer arranque se reiniciaría en bucle.
+          startupProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: {{ $root.Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ $root.Values.probes.startup.failureThreshold }}
+          # ¿El proceso responde? Si no, se reinicia. No mira dependencias: reiniciar no arregla una base caída.
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: {{ $root.Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.liveness.failureThreshold }}
+          # ¿Puede atender? Si no, sale del Service, sin reiniciarlo.
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: {{ $root.Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.readiness.failureThreshold }}
+          lifecycle:
+            preStop:
+              sleep: { seconds: {{ $root.Values.shutdown.preStopSeconds }} }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp # el disco de la imagen es de solo lectura
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "helpdesk.labels" $context | nindent 4 }}
+  {{- if $app.stickySessions }}
+  annotations:
+    # Traefik manda cada navegador siempre al mismo pod, con una cookie propia.
+    traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.name: helpdesk-route
+    traefik.ingress.kubernetes.io/service.sticky.cookie.secure: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.httponly: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.samesite: lax
+  {{- end }}
+spec:
+  selector: {{- include "helpdesk.selectorLabels" $context | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Al vaciar un nodo para mantenimiento, no se puede sacar más de una réplica a la vez.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels: {{- include "helpdesk.labels" $context | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {{- include "helpdesk.selectorLabels" $context | nindent 6 }}
+{{- if $app.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}
+  labels: {{- include "helpdesk.labels" $context | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $name }}
+  minReplicas: {{ $app.autoscaling.minReplicas }}
+  maxReplicas: {{ $app.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization # porcentaje de los requests de CPU, no de los limits
+          averageUtilization: {{ $app.autoscaling.targetCPUUtilization }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: {{ $root.Values.scaleDownStabilizationSeconds }}
+{{- end }}
+{{- if and $root.Values.ingress.enabled $app.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}
+  labels: {{- include "helpdesk.labels" $context | nindent 4 }}
+  annotations: {{- toYaml $root.Values.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ $root.Values.ingress.className }}
+  rules:
+    - host: {{ $app.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port:
+                  name: http
+{{- end }}
+{{- end }}
