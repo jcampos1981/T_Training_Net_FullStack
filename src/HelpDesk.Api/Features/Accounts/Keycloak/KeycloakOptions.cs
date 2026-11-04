@@ -23,15 +23,16 @@ public sealed class KeycloakOptions
 
     public bool IsEnabled => !string.IsNullOrWhiteSpace(Authority);
 
-    // Rutas fijas de Keycloak; son las mismas que publica el discovery document.
-    public Uri AuthorizationEndpoint => new($"{RealmUrl}/protocol/openid-connect/auth");
+    // Rutas fijas de Keycloak; son las mismas que publica el discovery document. Métodos y no propiedades: ValidateDataAnnotations
+    // lee todas las propiedades, y estas lanzan sin Authority, así que la API no arrancaba sin Keycloak configurado.
+    public Uri AuthorizationEndpoint() => new($"{RealmUrl()}/protocol/openid-connect/auth");
 
-    public Uri TokenEndpoint => new($"{RealmUrl}/protocol/openid-connect/token");
+    public Uri TokenEndpoint() => new($"{RealmUrl()}/protocol/openid-connect/token");
 
-    private string RealmUrl => Authority?.TrimEnd('/')
+    private string RealmUrl() => Authority?.TrimEnd('/')
         ?? throw new InvalidOperationException($"Falta {SectionName}:Authority.");
 
     // ¿Lo emitió este Keycloak? Compara el "iss" del token con el Authority (sin la "/" final).
     public bool IsIssuer(string? issuer) =>
-        IsEnabled && string.Equals(issuer?.TrimEnd('/'), RealmUrl, StringComparison.Ordinal);
+        IsEnabled && string.Equals(issuer?.TrimEnd('/'), RealmUrl(), StringComparison.Ordinal);
 }

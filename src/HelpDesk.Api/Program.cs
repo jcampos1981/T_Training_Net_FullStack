@@ -132,3 +132,7 @@ static void ConfigureJson(JsonSerializerOptions options)
     // clientes generados (TypeScript) terminan con "number | string" en cada número. Strict: un número es un número.
     options.NumberHandling = JsonNumberHandling.Strict;
 }
+
+// Las instrucciones de nivel superior generan una clase Program interna. Esto la hace pública: WebApplicationFactory<Program>
+// la necesita para arrancar la API en las pruebas de integración.
+public partial class Program;

@@ -6,7 +6,7 @@ namespace HelpDesk.Api.Features.Dashboard;
 
 public static class DashboardFeature
 {
-    private const string CacheKey = "dashboard";
+    public const string CacheKey = "dashboard";
 
     // Cada carga cuesta unas 30 mil lecturas y 400 ms de CPU, y cada aviso en vivo la dispara en todos los dashboards
     // abiertos. Con esto, como máximo una consulta cada 4 s, sin importar cuántos haya.

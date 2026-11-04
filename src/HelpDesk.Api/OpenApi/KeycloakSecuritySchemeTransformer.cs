@@ -27,8 +27,8 @@ internal sealed class KeycloakSecuritySchemeTransformer(IOptions<KeycloakOptions
             {
                 AuthorizationCode = new OpenApiOAuthFlow
                 {
-                    AuthorizationUrl = keycloak.AuthorizationEndpoint,
-                    TokenUrl = keycloak.TokenEndpoint,
+                    AuthorizationUrl = keycloak.AuthorizationEndpoint(),
+                    TokenUrl = keycloak.TokenEndpoint(),
                     Scopes = new Dictionary<string, string>
                     {
                         ["openid"] = "Identificar al usuario (OpenID Connect)",

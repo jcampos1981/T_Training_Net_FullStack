@@ -11,6 +11,7 @@
     <Project Path="benchmarks/HelpDesk.Benchmarks/HelpDesk.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/HelpDesk.Api.IntegrationTests/HelpDesk.Api.IntegrationTests.csproj" />
     <Project Path="tests/HelpDesk.Domain.Tests/HelpDesk.Domain.Tests.csproj" />
   </Folder>
 </Solution>
