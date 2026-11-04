@@ -15,7 +15,7 @@ public static class TicketMappings
             ticket.Priority,
             ticket.Status,
             ticket.CreatedAt,
-            ticket.AssignedTo,
+            ticket.AssignedTo?.Value,
             ticket.Version.ToString(CultureInfo.InvariantCulture),
             ticket.RequestedBy,
             sla.Evaluate(ticket),

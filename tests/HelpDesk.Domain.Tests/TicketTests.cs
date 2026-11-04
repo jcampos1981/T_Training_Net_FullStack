@@ -37,7 +37,7 @@ public sealed class TicketTests
         Ticket fromPortal = TestTickets.Create() with { RequestedBy = "camila@acme.local" };
 
         // Act: el equipo lo edita y lo asigna
-        Ticket updated = fromPortal.Update("Título revisado", TicketPriority.High, TicketStatus.InProgress, "pedro").Value;
+        Ticket updated = fromPortal.Update("Título revisado", TicketPriority.High, TicketStatus.InProgress, new AgentName("pedro")).Value;
 
         // Assert: quién lo pidió no cambia
         Assert.Equal("camila@acme.local", updated.RequestedBy);
@@ -50,13 +50,13 @@ public sealed class TicketTests
         Ticket original = TestTickets.Create(title: "Título original");
 
         // Act
-        Ticket updated = original.Update("Título nuevo", TicketPriority.Critical, TicketStatus.InProgress, "ana").Value;
+        Ticket updated = original.Update("Título nuevo", TicketPriority.Critical, TicketStatus.InProgress, new AgentName("ana")).Value;
 
         // Assert
         Assert.Equal("Título nuevo", updated.Title);
         Assert.Equal(TicketPriority.Critical, updated.Priority);
         Assert.Equal(TicketStatus.InProgress, updated.Status);
-        Assert.Equal("ana", updated.AssignedTo);
+        Assert.Equal(new AgentName("ana"), updated.AssignedTo);
         Assert.Equal(original.Id, updated.Id);
         Assert.Equal("Título original", original.Title); // inmutable: el original no cambió
     }

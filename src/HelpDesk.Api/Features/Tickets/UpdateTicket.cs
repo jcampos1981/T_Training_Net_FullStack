@@ -32,13 +32,13 @@ public static class UpdateTicket
 
             Ticket current = found.Value;
 
-            bool reassigns = !string.Equals(current.AssignedTo, request.AssignedTo, StringComparison.OrdinalIgnoreCase);
-            if (reassigns && !(await authorization.AuthorizeAsync(user, current, TicketOperations.Reassign)).Succeeded)
+            AgentName? assignedTo = AgentName.From(request.AssignedTo);
+            if (current.AssignedTo != assignedTo && !(await authorization.AuthorizeAsync(user, current, TicketOperations.Reassign)).Succeeded)
             {
                 return Error.Forbidden;
             }
 
-            Result<Ticket> changed = current.Update(request.Title, request.Priority, request.Status, request.AssignedTo);
+            Result<Ticket> changed = current.Update(request.Title, request.Priority, request.Status, assignedTo);
             if (!changed.IsSuccess)
             {
                 return changed.Error;
@@ -47,7 +47,7 @@ public static class UpdateTicket
             // Antes de guardar: UpdateAsync adjunta "current" a EF, que le escribe los valores nuevos aunque sea un record
             // inmutable. Después de esa línea, "current" ya no dice cómo estaba el ticket.
             TicketEventKind kind = KindOfChange(current, changed.Value);
-            string? previousAgent = current.AssignedTo;
+            AgentName? previousAgent = current.AssignedTo;
 
             Result<Ticket> saved = await repository.UpdateAsync(current, changed.Value, request.ExpectedVersion(), cancellationToken);
             if (!saved.IsSuccess)

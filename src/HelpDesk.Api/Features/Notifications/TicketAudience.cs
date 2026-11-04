@@ -23,9 +23,9 @@ public static class TicketAudience
             yield return Supervision;
         }
 
-        if (user.AgentName is { } agent)
+        if (user.Agent is { } agent)
         {
-            yield return Agent(agent);
+            yield return Agent(agent.Value);
         }
 
         if (user.IsInRole(HelpDeskRoles.Customer) && user.Email is { } email)
@@ -35,12 +35,12 @@ public static class TicketAudience
     }
 
     // previousAgent: si el ticket cambió de manos, quien lo tenía también debe enterarse.
-    public static IReadOnlyList<string> StaffFor(Ticket ticket, string? previousAgent)
+    public static IReadOnlyList<string> StaffFor(Ticket ticket, AgentName? previousAgent)
     {
         IEnumerable<string> agents = new[] { ticket.AssignedTo, previousAgent }
-            .OfType<string>()
-            .Select(Agent)
-            .Distinct();
+            .OfType<AgentName>()
+            .Distinct()
+            .Select(agent => Agent(agent.Value));
 
         return [Supervision, .. agents];
     }

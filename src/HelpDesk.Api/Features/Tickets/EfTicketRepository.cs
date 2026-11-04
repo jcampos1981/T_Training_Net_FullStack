@@ -27,7 +27,7 @@ public sealed class EfTicketRepository(HelpDeskDbContext db) : ITicketRepository
             query = query.Where(ticket => ticket.Priority == priority);
         }
 
-        if (filter.AssignedTo is { } agent)
+        if (AgentName.From(filter.AssignedTo) is { } agent)
         {
             query = query.Where(ticket => ticket.AssignedTo == agent);
         }
@@ -107,11 +107,11 @@ public sealed class EfTicketRepository(HelpDeskDbContext db) : ITicketRepository
         CancellationToken cancellationToken) =>
         // Sin TagWith: ExecuteUpdate lo ignora (EF Core 10), el comentario no llega al SQL.
         db.Tickets
-            .Where(ticket => ticket.AssignedTo == fromAgent
+            .Where(ticket => ticket.AssignedTo == new AgentName(fromAgent)
                 && (ticket.Status == TicketStatus.Open || ticket.Status == TicketStatus.InProgress))
             .ExecuteUpdateAsync(
                 setters => setters
-                    .SetProperty(ticket => ticket.AssignedTo, toAgent)
+                    .SetProperty(ticket => ticket.AssignedTo, new AgentName(toAgent))
                     // ExecuteUpdate no pasa por SaveChanges: el interceptor de auditoría no se entera.
                     .SetProperty(ticket => EF.Property<DateTimeOffset?>(ticket, AuditInterceptor.UpdatedAt), now),
                 cancellationToken);

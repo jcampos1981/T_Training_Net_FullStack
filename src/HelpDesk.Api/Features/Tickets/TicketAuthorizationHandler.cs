@@ -36,12 +36,12 @@ public sealed class TicketAuthorizationHandler : AuthorizationHandler<OperationA
             return requested;
         }
 
-        if (user.AgentName is not { } agent || (requested.AssignedTo is not null && !user.IsAgent(requested.AssignedTo)))
+        if (user.Agent is not { } agent || (requested.AssignedTo is not null && !user.IsAgent(AgentName.From(requested.AssignedTo))))
         {
             return null;
         }
 
-        return requested with { AssignedTo = agent };
+        return requested with { AssignedTo = agent.Value };
     }
 
     private static bool IsAllowed(ClaimsPrincipal user, OperationAuthorizationRequirement operation, Ticket ticket) =>

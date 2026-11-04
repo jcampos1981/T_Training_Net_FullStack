@@ -22,9 +22,9 @@ public sealed class SlaAlertQueries(HelpDeskDbContext db, ISlaPolicy policy)
             .Where(row => row.alert.Level == SlaState.Breached
                 || !db.SlaAlerts.Any(other => other.TicketId == row.alert.TicketId && other.Level == SlaState.Breached));
 
-        if (agent is not null)
+        if (AgentName.From(agent) is { } assignedTo)
         {
-            query = query.Where(row => row.ticket.AssignedTo == agent);
+            query = query.Where(row => row.ticket.AssignedTo == assignedTo);
         }
 
         if (level is not null)
@@ -49,7 +49,7 @@ public sealed class SlaAlertQueries(HelpDeskDbContext db, ISlaPolicy policy)
             row.ticket.Title,
             row.ticket.Priority,
             row.ticket.Status,
-            row.ticket.AssignedTo,
+            row.ticket.AssignedTo?.Value,
             row.alert.Level,
             policy.DeadlineOf(row.ticket),
             row.alert.RaisedAt))];

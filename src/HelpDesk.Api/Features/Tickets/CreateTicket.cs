@@ -29,7 +29,7 @@ public static class CreateTicket
                 Title = request.Title,
                 Priority = request.Priority,
                 CreatedAt = clock.GetUtcNow(),
-                AssignedTo = request.AssignedTo
+                AssignedTo = AgentName.From(request.AssignedTo)
             };
 
             // Crearlo asignado a OTRO es repartir trabajo: la misma regla que reasignar.

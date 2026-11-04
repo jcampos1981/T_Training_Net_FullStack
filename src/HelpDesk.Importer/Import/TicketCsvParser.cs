@@ -61,7 +61,7 @@ public static class TicketCsvParser
             Priority = priority,
             Status = status,
             CreatedAt = createdAt,
-            AssignedTo = string.IsNullOrWhiteSpace(row.AssignedTo) ? null : row.AssignedTo
+            AssignedTo = AgentName.From(row.AssignedTo)
         };
 
         return new ParseResult.Success(ticket);

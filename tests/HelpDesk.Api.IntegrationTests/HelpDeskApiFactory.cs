@@ -133,7 +133,7 @@ public sealed class HelpDeskApiFactory : WebApplicationFactory<Program>, IAsyncL
             Title = title,
             Priority = priority,
             CreatedAt = createdAt,
-            AssignedTo = assignedTo,
+            AssignedTo = AgentName.From(assignedTo),
             RequestedBy = requestedBy
         };
 

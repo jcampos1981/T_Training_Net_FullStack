@@ -19,7 +19,7 @@ public sealed class TicketReport(IReadOnlyCollection<Ticket> tickets, ISlaPolicy
         team.GroupJoin(
                 OpenTickets,
                 agent => agent,
-                ticket => ticket.AssignedTo,
+                ticket => ticket.AssignedTo?.Value,
                 (agent, assigned) => new AgentWorkload(
                     agent,
                     OpenTickets: assigned.Count(),

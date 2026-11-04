@@ -13,7 +13,7 @@ public sealed class AgentQueries(HelpDeskDbContext db)
         await db.Tickets
             .TagWith("Resumen de carga por agente")
             .Where(ticket => ticket.AssignedTo != null)
-            .GroupBy(ticket => ticket.AssignedTo!)
+            .GroupBy(ticket => ticket.AssignedTo!.Value)
             .Select(group => new
             {
                 Agent = group.Key,
@@ -22,6 +22,6 @@ public sealed class AgentQueries(HelpDeskDbContext db)
             })
             .OrderByDescending(summary => summary.Open)
             .ThenBy(summary => summary.Agent)
-            .Select(summary => new AgentSummaryResponse(summary.Agent, summary.Open, summary.Total))
+            .Select(summary => new AgentSummaryResponse(summary.Agent.Value, summary.Open, summary.Total))
             .ToListAsync(cancellationToken);
 }

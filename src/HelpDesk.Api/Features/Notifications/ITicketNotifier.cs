@@ -9,7 +9,7 @@ namespace HelpDesk.Api.Features.Notifications;
 // excepciones: el cambio ya está hecho y un aviso perdido no debe convertirlo en un error para quien lo hizo.
 public interface ITicketNotifier
 {
-    Task TicketChangedAsync(Ticket ticket, TicketEventKind kind, ClaimsPrincipal actor, string? previousAgent = null);
+    Task TicketChangedAsync(Ticket ticket, TicketEventKind kind, ClaimsPrincipal actor, AgentName? previousAgent = null);
 
     Task TicketsReassignedAsync(ReassignTicketsResponse reassigned, ClaimsPrincipal actor);
 

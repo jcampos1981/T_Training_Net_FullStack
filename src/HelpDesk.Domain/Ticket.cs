@@ -16,7 +16,7 @@ public sealed record Ticket
 
     public required DateTimeOffset CreatedAt { get; init; }
 
-    public string? AssignedTo { get; init; }
+    public AgentName? AssignedTo { get; init; }
 
     // El email del cliente que lo abrió desde el portal; null si lo creó el equipo de soporte.
     // Update() no lo toca: quién pidió el ticket no cambia.
@@ -28,7 +28,7 @@ public sealed record Ticket
 
     public bool IsClosed => Status is TicketStatus.Resolved or TicketStatus.Closed;
 
-    public Result<Ticket> Update(string title, TicketPriority priority, TicketStatus status, string? assignedTo)
+    public Result<Ticket> Update(string title, TicketPriority priority, TicketStatus status, AgentName? assignedTo)
     {
         if (Status is TicketStatus.Closed)
         {

@@ -13,14 +13,14 @@ public sealed class SignalRTicketNotifier(
     TimeProvider clock,
     ILogger<SignalRTicketNotifier> logger) : ITicketNotifier
 {
-    public async Task TicketChangedAsync(Ticket ticket, TicketEventKind kind, ClaimsPrincipal actor, string? previousAgent = null)
+    public async Task TicketChangedAsync(Ticket ticket, TicketEventKind kind, ClaimsPrincipal actor, AgentName? previousAgent = null)
     {
         DateTimeOffset now = clock.GetUtcNow();
 
         try
         {
             await hub.Clients.Groups(TicketAudience.StaffFor(ticket, previousAgent)).TicketChanged(new TicketEvent(
-                ticket.Id.Value, ticket.Id.ToString(), ticket.Title, ticket.Status, ticket.AssignedTo, kind, actor.AuthorName, now));
+                ticket.Id.Value, ticket.Id.ToString(), ticket.Title, ticket.Status, ticket.AssignedTo?.Value, kind, actor.AuthorName, now));
 
             // A quién está asignado no es parte del contrato del cliente: un cambio solo de agente no le interesa.
             if (ticket.RequestedBy is { } customer && kind is not TicketEventKind.Reassigned)

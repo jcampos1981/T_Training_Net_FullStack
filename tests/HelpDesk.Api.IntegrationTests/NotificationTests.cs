@@ -78,6 +78,19 @@ public sealed class NotificationTests(HelpDeskApiFactory api)
     }
 
     [Fact]
+    public async Task ChangingOnlyTheCaseOfTheAgent_IsNotAReassignment()
+    {
+        await using HubListener pedro = await HubListener.ConnectAsync(api, "pedro");
+        ApiUser supervisor = await api.AsAsync("laura");
+        TicketResponse ticket = await supervisor.CreateTicketAsync(Test.UniqueTitle("Mayúsculas"), assignedTo: "pedro");
+
+        await (await supervisor.UpdateTicketAsync(ticket.Id, assignedTo: "PEDRO")).ReadAsync<TicketResponse>();
+
+        TicketEvent received = await pedro.WaitForAsync<TicketEvent>(notice => notice.TicketId == ticket.Id && notice.Kind != TicketEventKind.Created);
+        Assert.Equal(TicketEventKind.Updated, received.Kind);
+    }
+
+    [Fact]
     public async Task Customer_ReceivesTheirOwnContract_WithoutInternalData()
     {
         await using HubListener camila = await HubListener.ConnectAsync(api, "camila");

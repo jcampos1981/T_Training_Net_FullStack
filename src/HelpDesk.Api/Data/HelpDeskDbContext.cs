@@ -28,6 +28,7 @@ public sealed class HelpDeskDbContext(DbContextOptions<HelpDeskDbContext> option
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         configurationBuilder.Properties<TicketId>().HaveConversion<TicketIdConverter>();
+        configurationBuilder.Properties<AgentName>().HaveConversion<AgentNameConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
