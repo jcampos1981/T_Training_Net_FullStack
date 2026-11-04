@@ -37,7 +37,7 @@ public sealed class TicketTests
         Ticket fromPortal = TestTickets.Create() with { RequestedBy = "camila@acme.local" };
 
         // Act: el equipo lo edita y lo asigna
-        Ticket updated = fromPortal.Update("Título revisado", TicketPriority.High, TicketStatus.InProgress, "pedro");
+        Ticket updated = fromPortal.Update("Título revisado", TicketPriority.High, TicketStatus.InProgress, "pedro").Value;
 
         // Assert: quién lo pidió no cambia
         Assert.Equal("camila@acme.local", updated.RequestedBy);
@@ -50,7 +50,7 @@ public sealed class TicketTests
         Ticket original = TestTickets.Create(title: "Título original");
 
         // Act
-        Ticket updated = original.Update("Título nuevo", TicketPriority.Critical, TicketStatus.InProgress, "ana");
+        Ticket updated = original.Update("Título nuevo", TicketPriority.Critical, TicketStatus.InProgress, "ana").Value;
 
         // Assert
         Assert.Equal("Título nuevo", updated.Title);
@@ -62,14 +62,15 @@ public sealed class TicketTests
     }
 
     [Fact]
-    public void Update_WhenClosed_ThrowsDomainRuleException()
+    public void Update_WhenClosed_FailsWithABusinessRule()
     {
         Ticket closed = TestTickets.Create(status: TicketStatus.Closed);
 
-        var exception = Assert.Throws<DomainRuleException>(
-            () => closed.Update("Otro título", TicketPriority.Low, TicketStatus.Open, assignedTo: null));
+        Result<Ticket> result = closed.Update("Otro título", TicketPriority.Low, TicketStatus.Open, assignedTo: null);
 
-        Assert.Contains("cerrado", exception.Message);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorKind.Conflict, result.Error.Kind);
+        Assert.Contains("cerrado", result.Error.Detail);
     }
 
     [Fact]
@@ -77,7 +78,7 @@ public sealed class TicketTests
     {
         Ticket ticket = TestTickets.Create();
 
-        TicketComment comment = ticket.CreateComment("  luis ", "Ya revisé el servidor.", TestTickets.Now);
+        TicketComment comment = ticket.CreateComment("  luis ", "Ya revisé el servidor.", TestTickets.Now).Value;
 
         Assert.Equal(ticket.Id, comment.TicketId);
         Assert.Equal("luis", comment.Author);
@@ -85,11 +86,22 @@ public sealed class TicketTests
     }
 
     [Fact]
-    public void CreateComment_WhenClosed_ThrowsDomainRuleException()
+    public void CreateComment_WhenClosed_FailsWithABusinessRule()
     {
         Ticket closed = TestTickets.Create(status: TicketStatus.Closed);
 
-        Assert.Throws<DomainRuleException>(() => closed.CreateComment("ana", "¿Sigue fallando?", TestTickets.Now));
+        Result<TicketComment> result = closed.CreateComment("ana", "¿Sigue fallando?", TestTickets.Now);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorKind.Conflict, result.Error.Kind);
+    }
+
+    [Fact]
+    public void Result_Value_WhenItFailed_IsABug()
+    {
+        Result<Ticket> failed = Error.NotFound;
+
+        Assert.Throws<InvalidOperationException>(() => failed.Value);
     }
 
     [Theory]
@@ -107,7 +119,7 @@ public sealed class TicketTests
     {
         Ticket resolved = TestTickets.Create(status: TicketStatus.Resolved);
 
-        Ticket reopened = resolved.Update("Volvió a fallar", TicketPriority.High, TicketStatus.Open, assignedTo: null);
+        Ticket reopened = resolved.Update("Volvió a fallar", TicketPriority.High, TicketStatus.Open, assignedTo: null).Value;
 
         Assert.Equal(TicketStatus.Open, reopened.Status);
     }

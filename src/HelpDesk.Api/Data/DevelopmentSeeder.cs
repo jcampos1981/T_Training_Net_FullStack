@@ -75,16 +75,16 @@ public static class DevelopmentSeeder
 
         if (!await db.Tickets.AnyAsync(ticket => ticket.RequestedBy != null, cancellationToken))
         {
-            await SeedPortalTicketsAsync(provider.GetRequiredService<OpenTicketHandler>(), cancellationToken);
+            await SeedPortalTicketsAsync(ActivatorUtilities.CreateInstance<OpenTicket.Handler>(provider), cancellationToken);
         }
     }
 
     // Por el mismo caso de uso que el portal: ticket y descripción, como si los hubiera abierto cada cliente.
-    private static async Task SeedPortalTicketsAsync(OpenTicketHandler handler, CancellationToken cancellationToken)
+    private static async Task SeedPortalTicketsAsync(OpenTicket.Handler handler, CancellationToken cancellationToken)
     {
         foreach ((string customer, OpenTicketRequest request) in SamplePortalTickets)
         {
-            await handler.HandleAsync(request, $"{customer}@{CustomerEmailDomain}", customer, cancellationToken);
+            await handler.SaveAsync(request, $"{customer}@{CustomerEmailDomain}", customer, cancellationToken);
         }
     }
 
@@ -182,7 +182,7 @@ public static class DevelopmentSeeder
                 (string author, string body) = SampleComments[commentIndex];
                 DateTimeOffset createdAt = now.AddMinutes(-30 * (commentCount - commentIndex));
 
-                await comments.AddAsync(openTickets[ticketIndex].CreateComment(author, body, createdAt), cancellationToken);
+                await comments.AddAsync(openTickets[ticketIndex].CreateComment(author, body, createdAt).Value, cancellationToken);
             }
         }
     }

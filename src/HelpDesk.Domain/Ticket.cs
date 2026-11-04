@@ -28,11 +28,11 @@ public sealed record Ticket
 
     public bool IsClosed => Status is TicketStatus.Resolved or TicketStatus.Closed;
 
-    public Ticket Update(string title, TicketPriority priority, TicketStatus status, string? assignedTo)
+    public Result<Ticket> Update(string title, TicketPriority priority, TicketStatus status, string? assignedTo)
     {
         if (Status is TicketStatus.Closed)
         {
-            throw new DomainRuleException($"El ticket {Id} está cerrado y no se puede modificar.");
+            return Error.BusinessRule($"El ticket {Id} está cerrado y no se puede modificar.");
         }
 
         // Inmutable: devuelve una copia con los cambios; el setter de Title vuelve a validar.
@@ -40,11 +40,11 @@ public sealed record Ticket
     }
 
     // La regla vive en el ticket aunque el comentario se guarde aparte: solo el ticket sabe si está cerrado.
-    public TicketComment CreateComment(string author, string body, DateTimeOffset createdAt)
+    public Result<TicketComment> CreateComment(string author, string body, DateTimeOffset createdAt)
     {
         if (Status is TicketStatus.Closed)
         {
-            throw new DomainRuleException($"El ticket {Id} está cerrado y no admite comentarios.");
+            return Error.BusinessRule($"El ticket {Id} está cerrado y no admite comentarios.");
         }
 
         return new TicketComment { TicketId = Id, Author = author, Body = body, CreatedAt = createdAt };

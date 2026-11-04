@@ -12,6 +12,7 @@ using HelpDesk.Api.Features.Portal;
 using HelpDesk.Api.Features.Sla;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Health;
+using HelpDesk.Api.Mediation;
 using HelpDesk.Api.Middleware;
 using HelpDesk.Api.OpenApi;
 using HelpDesk.Api.Security;
@@ -75,6 +76,7 @@ builder.Services.AddHelpDeskCaching(redis);  // output caching y HybridCache (me
 builder.Services.AddFrontendCors();          // qué frontends de otro origen pueden leer las respuestas
 builder.Services.AddHelpDeskRateLimiting();  // límite por usuario y, más estricto, para login
 
+builder.Services.AddMediation(typeof(Program).Assembly); // cada caso de uso, con lo que corre alrededor de todos
 builder.Services.AddAccountsFeature(); // Identity, login y "cerrado por defecto"
 builder.Services.AddTicketsFeature();
 builder.Services.AddCommentsFeature();

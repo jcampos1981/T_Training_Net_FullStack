@@ -1,11 +1,10 @@
 namespace HelpDesk.Api.Features.Agents;
 
-// Los Controllers se descubren solos (MapControllers); aquí solo se registran sus servicios.
+// Los Controllers se descubren solos (MapControllers), y los handlers también (AddMediation). Aquí, lo demás.
 public static class AgentsFeature
 {
     public static IServiceCollection AddAgentsFeature(this IServiceCollection services)
     {
-        services.AddScoped<ReassignTicketsHandler>();
         services.AddScoped<AgentQueries>();
         return services;
     }

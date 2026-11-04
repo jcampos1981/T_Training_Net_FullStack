@@ -1,10 +1,4 @@
-using System.Security.Claims;
 using HelpDesk.Api.Features.Accounts;
-using HelpDesk.Api.Features.Notifications;
-using HelpDesk.Api.Features.Tickets;
-using HelpDesk.Domain;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace HelpDesk.Api.Features.Comments;
 
@@ -27,105 +21,10 @@ public static class CommentsFeature
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden);
 
-        comments.MapGet("/", ListComments)
-            .WithName(nameof(ListComments))
-            .WithSummary("Lista los comentarios de un ticket, del más reciente al más antiguo.");
-
-        comments.MapGet("/{commentId:int:min(1)}", GetComment)
-            .WithName(nameof(GetComment))
-            .WithSummary("Obtiene un comentario de un ticket.");
-
-        comments.MapPost("/", AddComment)
-            .WithName(nameof(AddComment))
-            .WithSummary("Agrega un comentario firmado por el usuario actual. Un ticket cerrado no admite comentarios.")
-            .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status409Conflict);
+        ListComments.Map(comments);
+        GetComment.Map(comments);
+        AddComment.Map(comments);
 
         return app;
-    }
-
-    private static async Task<Results<Ok<IReadOnlyList<CommentResponse>>, NotFound, ForbidHttpResult>> ListComments(
-        int ticketId,
-        ClaimsPrincipal user,
-        IAuthorizationService authorization,
-        ITicketRepository tickets,
-        CommentQueries queries,
-        CancellationToken cancellationToken)
-    {
-        var id = new TicketId(ticketId);
-        Ticket? ticket = await tickets.FindAsync(id, cancellationToken);
-
-        if (ticket is null)
-        {
-            return TypedResults.NotFound();
-        }
-
-        if (!(await authorization.AuthorizeAsync(user, ticket, TicketOperations.Read)).Succeeded)
-        {
-            return TypedResults.Forbid();
-        }
-
-        return TypedResults.Ok(await queries.ListForTicketAsync(id, cancellationToken));
-    }
-
-    private static async Task<Results<Ok<CommentResponse>, NotFound, ForbidHttpResult>> GetComment(
-        int ticketId,
-        int commentId,
-        ClaimsPrincipal user,
-        IAuthorizationService authorization,
-        ITicketRepository tickets,
-        CommentQueries queries,
-        CancellationToken cancellationToken)
-    {
-        var id = new TicketId(ticketId);
-        Ticket? ticket = await tickets.FindAsync(id, cancellationToken);
-
-        if (ticket is null)
-        {
-            return TypedResults.NotFound();
-        }
-
-        if (!(await authorization.AuthorizeAsync(user, ticket, TicketOperations.Read)).Succeeded)
-        {
-            return TypedResults.Forbid();
-        }
-
-        CommentResponse? comment = await queries.FindAsync(id, commentId, cancellationToken);
-
-        return comment is null ? TypedResults.NotFound() : TypedResults.Ok(comment);
-    }
-
-    private static async Task<Results<CreatedAtRoute<CommentResponse>, NotFound, ForbidHttpResult>> AddComment(
-        int ticketId,
-        AddCommentRequest request,
-        ClaimsPrincipal user,
-        IAuthorizationService authorization,
-        ITicketRepository tickets,
-        ICommentRepository comments,
-        ITicketNotifier notifier,
-        TimeProvider clock,
-        CancellationToken cancellationToken)
-    {
-        Ticket? ticket = await tickets.FindAsync(new TicketId(ticketId), cancellationToken);
-
-        if (ticket is null)
-        {
-            return TypedResults.NotFound();
-        }
-
-        if (!(await authorization.AuthorizeAsync(user, ticket, TicketOperations.Update)).Succeeded)
-        {
-            return TypedResults.Forbid();
-        }
-
-        // Si el ticket está cerrado, CreateComment lanza DomainRuleException → 409.
-        TicketComment comment = ticket.CreateComment(user.AuthorName, request.Body, clock.GetUtcNow());
-        TicketComment saved = await comments.AddAsync(comment, cancellationToken);
-        await notifier.TicketChangedAsync(ticket, TicketEventKind.Commented, user);
-
-        return TypedResults.CreatedAtRoute(
-            CommentResponse.From(saved),
-            nameof(GetComment),
-            new { ticketId, commentId = saved.Id });
     }
 }

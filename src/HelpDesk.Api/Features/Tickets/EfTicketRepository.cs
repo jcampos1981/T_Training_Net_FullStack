@@ -71,7 +71,7 @@ public sealed class EfTicketRepository(HelpDeskDbContext db) : ITicketRepository
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<Ticket> UpdateAsync(
+    public async Task<Result<Ticket>> UpdateAsync(
         Ticket original,
         Ticket changed,
         ulong expectedVersion,
@@ -83,10 +83,18 @@ public sealed class EfTicketRepository(HelpDeskDbContext db) : ITicketRepository
         entry.CurrentValues.SetValues(changed);
 
         // 2. Concurrencia optimista: el UPDATE lleva "WHERE Version = <la que vio el cliente>".
-        //    Si alguien guardó antes, no coincide ninguna fila y EF lanza DbUpdateConcurrencyException.
+        //    Si alguien guardó antes, no coincide ninguna fila y EF lanza DbUpdateConcurrencyException. Esa excepción es un
+        //    detalle de EF: no sale de aquí, para que los casos de uso no tengan que saber de ella.
         entry.Property(ticket => ticket.Version).OriginalValue = expectedVersion;
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Error.EditConflict;
+        }
 
         // EF escribió en la entidad la nueva Version que generó la base.
         return entry.Entity;

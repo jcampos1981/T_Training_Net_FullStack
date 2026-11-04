@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using HelpDesk.Domain;
 
 namespace HelpDesk.Api.Paging;
 
@@ -18,6 +19,9 @@ public sealed record PageRequest(int After = 0, int PageSize = PageRequest.Defau
 
     // Se pide UNA fila de más: si llega, hay otra página, sin necesidad de un COUNT(*).
     public int Take() => PageSize + 1;
+
+    // after=0 significa "desde el principio": no hay TicketId 0.
+    public TicketId? AfterTicket() => After > 0 ? new TicketId(After) : null;
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {

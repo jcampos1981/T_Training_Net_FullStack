@@ -1,9 +1,4 @@
-using System.Security.Claims;
-using HelpDesk.Api.Features.Accounts;
-using HelpDesk.Api.Features.Tickets;
-using HelpDesk.Api.Paging;
 using HelpDesk.Domain;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
 
 namespace HelpDesk.Api.Features.Sla;
@@ -49,35 +44,8 @@ public static class SlaFeature
 
     public static IEndpointRouteBuilder MapSlaFeature(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/sla/alerts", ListSlaAlerts)
-            .WithTags("SLA")
-            .WithName(nameof(ListSlaAlerts))
-            .WithSummary("Alertas de SLA de tickets abiertos, las más recientes primero (keyset: ?after=&pageSize=). Un agente solo ve las suyas.")
-            .RequireAuthorization(HelpDeskPolicies.Staff)
-            .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status401Unauthorized)
-            .ProducesProblem(StatusCodes.Status403Forbidden);
+        ListSlaAlerts.Map(app);
 
         return app;
-    }
-
-    private static async Task<Results<Ok<CursorPage<SlaAlertResponse>>, ForbidHttpResult>> ListSlaAlerts(
-        [AsParameters] PageRequest page,
-        ClaimsPrincipal user,
-        SlaAlertQueries queries,
-        CancellationToken cancellationToken,
-        SlaState? level = null)
-    {
-        // La misma regla que GET /api/tickets: un agente solo ve lo suyo.
-        var everything = new TicketFilter(Status: null, Priority: null, AssignedTo: null);
-        if (TicketAuthorizationHandler.ScopeListFilter(user, everything) is not { } allowed)
-        {
-            return TypedResults.Forbid();
-        }
-
-        IReadOnlyList<SlaAlertResponse> alerts = await queries.ListAsync(
-            allowed.AssignedTo, level, page.After > 0 ? page.After : null, page.Take(), cancellationToken);
-
-        return TypedResults.Ok(CursorPage.Create(alerts, page, alert => alert, alert => alert.Id));
     }
 }
