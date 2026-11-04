@@ -103,9 +103,9 @@ try {
   const windowSeconds = 25;
   await sleep(windowSeconds * 1000);
 
-  const negotiations = (apiState.log.match(/POST \/hubs\/tickets\/negotiate/g) ?? []).length;
+  const attempts = (apiState.log.match(/GET \/hubs\/tickets[^ ]* → /g) ?? []).length;
   const refused = (apiState.log.match(/Rate limit:/g) ?? []).length;
-  check('Sin bucle: pocos intentos, con espera creciente (2 clientes en 25 s)', negotiations > 0 && negotiations <= 16, `${negotiations} negotiate`);
+  check('Sin bucle: pocos intentos, con espera creciente (2 clientes en 25 s)', attempts > 0 && attempts <= 16, `${attempts} intentos`);
   check('El límite de peticiones no tuvo que frenarlos', refused === 0, `${refused} rechazos`);
   check('El portal avisa que no hay conexión en vivo', await has(portalPage.locator('.live-offline')));
   check('El panel avisa que no hay conexión en vivo', await has(panelPage.getByTestId('live-offline')));

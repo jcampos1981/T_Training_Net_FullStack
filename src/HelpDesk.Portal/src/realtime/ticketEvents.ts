@@ -1,4 +1,4 @@
-import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+import { HttpTransportType, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { fetchSession } from '../auth/session';
 import type { TicketStatus } from '../tickets/labels';
 
@@ -40,8 +40,9 @@ function retryDelay(attempt: number): number {
 // el token tendría que ir en la URL (?access_token=), porque el navegador no deja poner headers en un WebSocket.
 export function connectTicketEvents(handlers: TicketEventsHandlers): () => void {
   const connection = new HubConnectionBuilder()
-    // X-CSRF para los transportes que usan fetch (negotiate); el WebSocket lo revisa el BFF por su Origin.
-    .withUrl('/hubs/tickets', { headers: { 'X-CSRF': '1' } })
+    // Directo por WebSocket, sin negotiate. Con varias instancias de la API, negotiate podría caer en una y el WebSocket en otra, y
+    // el identificador de la conexión solo existe en la primera. El BFF revisa el Origin del WebSocket.
+    .withUrl('/hubs/tickets', { skipNegotiation: true, transport: HttpTransportType.WebSockets })
     // Las fallas ya se manejan abajo: un corte de red es esperable, y no debe ensuciar la consola.
     .configureLogging(LogLevel.None)
     .build();

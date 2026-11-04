@@ -299,9 +299,9 @@ try {
     const has = async (locator, ms = 7000) => locator.first().waitFor({ timeout: ms }).then(() => true).catch(() => false);
     const snackbar = (text) => page.locator('.mud-snackbar', { hasText: text });
     const shot = (name) => page.screenshot({ path: path.join(shotsDir, `f7-sla-${name}.png`) });
-    const countNegotiate = () => (apiLog.match(/POST \/hubs\/tickets\/negotiate/g) ?? []).length;
+    const countConnections = () => (apiLog.match(/Conexi[^ ]+ al hub abierta/g) ?? []).length;
 
-    const negotiationsBefore = countNegotiate();
+    const connectionsBefore = countConnections();
     await page.goto(`${admin}/tickets`);
     await page.waitForURL(/localhost:8080/);
     await page.fill('#username', 'pedro');
@@ -309,7 +309,7 @@ try {
     await page.click('#kc-login');
     await page.waitForURL((url) => url.origin === admin && !url.pathname.startsWith('/signin-oidc'));
     await page.locator('.mud-table').waitFor();
-    await waitFor(() => countNegotiate() > negotiationsBefore, 8000);
+    await waitFor(() => countConnections() > connectionsBefore, 8000);
     check('La lista muestra la columna SLA', await has(page.getByRole('columnheader', { name: 'SLA' })));
     await shot('lista');
 

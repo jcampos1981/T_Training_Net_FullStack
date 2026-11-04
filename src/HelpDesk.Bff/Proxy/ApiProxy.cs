@@ -41,10 +41,26 @@ public static class ApiProxy
     {
         app.MapReverseProxy(proxy =>
         {
+            proxy.Use(CloseWebSocketsOnShutdownAsync);
             proxy.Use(RequireAntiforgeryHeaderAsync);
             proxy.Use(RequireLiveAccessTokenAsync);
         });
         return app;
+    }
+
+    // Al apagarse, Kestrel espera a que terminen las peticiones en curso, hasta 30 segundos, y un WebSocket reenviado no termina nunca: cada
+    // pod tardaba eso en irse. Las peticiones normales sí se dejan terminar. El portal se reconecta a otro pod y se pone al día solo.
+    private static async Task CloseWebSocketsOnShutdownAsync(HttpContext context, Func<Task> next)
+    {
+        if (!context.WebSockets.IsWebSocketRequest)
+        {
+            await next();
+            return;
+        }
+
+        IHostApplicationLifetime lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
+        await using CancellationTokenRegistration closeOnShutdown = lifetime.ApplicationStopping.Register(context.Abort);
+        await next();
     }
 
     // CSRF: otra página puede hacer que el navegador mande la cookie (un <form> que se envía solo). SameSite=Strict

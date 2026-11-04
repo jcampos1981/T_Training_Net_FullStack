@@ -8,15 +8,18 @@ retryButton.addEventListener("click", retry);
 const resumeButton = document.getElementById("components-resume-button");
 resumeButton.addEventListener("click", resume);
 
+// Cuánto tiempo seguido tiene que responder la página antes de recargar.
+const stableMilliseconds = 3000;
+
 let lastAttemptChecked = 0;
-let serverWasUp = false;
+let servableSince = null;
 
 function handleReconnectStateChanged(event) {
     if (event.detail.state === "show") {
         reconnectModal.showModal();
     } else if (event.detail.state === "hide") {
         lastAttemptChecked = 0;
-        serverWasUp = false;
+        servableSince = null;
         reconnectModal.close();
     } else if (event.detail.state === "retrying") {
         reloadIfTheCircuitIsGone(event.detail.currentAttempt);
@@ -31,24 +34,36 @@ function handleReconnectStateChanged(event) {
 // redirect a Keycloak que la Content-Security-Policy bloquea, y para Blazor eso es un servidor inalcanzable: reintenta para siempre, y
 // la pestaña queda atascada con el servidor ya sano.
 //
-// Si el servidor ya respondía antes del último intento, y ese intento falló igual, no va a reconectar: se recarga la página. No basta
-// con que responda ahora: tras un corte de red, el intento siguiente puede recuperar el circuito, con lo que el usuario estaba escribiendo.
+// Si la página se puede servir, y sigue así después de otro intento fallido, no va a reconectar: se recarga. No basta con que responda una
+// vez, por dos razones:
+// - Tras un corte de red, el intento siguiente puede recuperar el circuito, con lo que el usuario estaba escribiendo.
+// - Un pod que se está yendo todavía responde en sus últimos milisegundos, y el proxy manda ahí a los clientes con afinidad. Recargar en ese
+//   momento dejaría la pestaña en un 502, una página sin JavaScript para volver a intentarlo. Unos segundos después, ese pod ya no está.
 async function reloadIfTheCircuitIsGone(attempt) {
     if (attempt <= lastAttemptChecked) {
         return; // este evento también llega en cada segundo de la cuenta regresiva
     }
     lastAttemptChecked = attempt;
 
-    if (serverWasUp) {
-        location.reload();
+    if (!await pageCanBeServed()) {
+        servableSince = null;
         return;
     }
 
+    servableSince ??= Date.now();
+    if (Date.now() - servableSince >= stableMilliseconds) {
+        location.reload();
+    }
+}
+
+// Se pregunta por la misma página, y por el mismo camino que usará la recarga.
+async function pageCanBeServed() {
     try {
-        const response = await fetch("/health/live", { cache: "no-store" });
-        serverWasUp = response.ok;
+        // manual: sin sesión, la página redirige a Keycloak. Eso también es que el servidor responde, y la CSP no deja seguir ese redirect.
+        const response = await fetch(location.href, { cache: "no-store", redirect: "manual" });
+        return response.ok || response.type === "opaqueredirect";
     } catch {
-        serverWasUp = false;
+        return false;
     }
 }
 

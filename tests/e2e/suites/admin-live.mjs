@@ -47,8 +47,8 @@ async function startAdmin() {
   await waitLog(() => adminLog, 'Application started', 'El panel');
 }
 const countLog = (pattern) => (apiLog.match(pattern) ?? []).length;
-const negotiations = () => countLog(/POST \/hubs\/tickets\/negotiate/g);
-const finishedSockets = () => countLog(/GET \/hubs\/tickets\?id=[^ ]* → /g);
+const hubConnections = () => countLog(/Conexi[^ ]+ al hub abierta/g);
+const finishedSockets = () => countLog(/GET \/hubs\/tickets[^ ]* → /g);
 
 async function jwt(email) {
   const response = await fetch(`${api}/api/token`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
@@ -102,7 +102,7 @@ const created = [];
 const tag = `vivo-${Date.now()}`;
 const consoleErrors = [];
 let lauraJwt;
-let hubConnected = () => waitFor(() => negotiations() > 0, 8000);
+let hubConnected = () => waitFor(() => hubConnections() > 0, 8000);
 
 try {
   await startApi();
@@ -141,7 +141,7 @@ try {
   await login(page, 'pedro');
   const loginAt = Date.now();
   await page.locator('.mud-table').waitFor();
-  check('El circuito abre la conexión con el hub', await hubConnected(), `${negotiations()} negotiate`);
+  check('El circuito abre la conexión con el hub', await hubConnected(), `${hubConnections()} conexiones`);
   check('No muestra "sin conexión"', await page.getByTestId('live-offline').count() === 0);
   const docs = documentRequests;
 
@@ -253,7 +253,7 @@ try {
   await login(lauraPage, 'laura', '/dashboard');
   const openTile = lauraPage.getByTestId('status-Open').locator('.stat-value');
   await openTile.waitFor();
-  await waitFor(() => negotiations() >= 2, 8000);
+  await waitFor(() => hubConnections() >= 2, 8000);
   const openBefore = await openTile.innerText();
 
   const fromPortal = await callApi('POST', '/api/portal/tickets', camilaJwt, { title: `${tag} del portal`, priority: 'Medium', description: 'Descripción de prueba.' });
@@ -310,19 +310,19 @@ try {
 
   if (long) {
     console.log('--- 12. Al cerrar el navegador, el circuito suelta su conexión ---');
-    const activeBefore = await (async () => { await waitFor(() => negotiations() >= 2, 40_000); return negotiations() - finishedSockets(); })();
+    const activeBefore = await (async () => { await waitFor(() => hubConnections() >= 2, 40_000); return hubConnections() - finishedSockets(); })();
     await lauraContext.close();
     console.log(`      conexiones activas: ${activeBefore}. Esperando que Blazor libere el circuito (3 min)...`);
 
     console.log('--- 13. El token de Keycloak vence con la pantalla abierta ---');
     let offlineSeen = false;
-    const negotiationsBefore = negotiations();
+    const connectionsBefore = hubConnections();
     const deadline = Date.now() + 5.5 * 60_000;
-    while (Date.now() < deadline && negotiations() === negotiationsBefore) {
+    while (Date.now() < deadline && hubConnections() === connectionsBefore) {
       offlineSeen ||= await page.getByTestId('live-offline').count() > 0;
       await sleep(500);
     }
-    check('El panel se reconecta solo cuando vence el token', negotiations() > negotiationsBefore, `a los ${Math.round((Date.now() - loginAt) / 1000)} s del login`);
+    check('El panel se reconecta solo cuando vence el token', hubConnections() > connectionsBefore, `a los ${Math.round((Date.now() - loginAt) / 1000)} s del login`);
     await sleep(1000);
     check('El usuario no vio ningún aviso de corte', !offlineSeen && await page.getByTestId('live-offline').count() === 0);
     check('Se renovó el token en el servidor', /Access token renovado/.test(adminLog));
@@ -330,8 +330,8 @@ try {
     check('Los avisos siguen llegando con el token nuevo', renewed.status === 201 && await has(comments.filter({ hasText: 'Con el token nuevo' })));
     await clearSnackbars();
 
-    const released = await waitFor(() => negotiations() - finishedSockets() <= 1, 4 * 60_000);
-    check('El circuito cerrado soltó su conexión con el hub', released, `activas: ${negotiations() - finishedSockets()}`);
+    const released = await waitFor(() => hubConnections() - finishedSockets() <= 1, 4 * 60_000);
+    check('El circuito cerrado soltó su conexión con el hub', released, `activas: ${hubConnections() - finishedSockets()}`);
   } else {
     await lauraContext.close();
   }

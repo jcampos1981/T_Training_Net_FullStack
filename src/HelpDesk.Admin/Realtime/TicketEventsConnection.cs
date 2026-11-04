@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using HelpDesk.Admin.Api;
 using HelpDesk.Admin.Authentication;
+using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Options;
 using Microsoft.Kiota.Abstractions.Authentication;
@@ -41,8 +42,13 @@ public sealed class TicketEventsConnection : IAsyncDisposable
 
         connection = new HubConnectionBuilder()
             // Se pide en cada conexión: si el token vigente está por vencer, SessionAccessTokens lo renueva.
-            .WithUrl(hubUrl, http => http.AccessTokenProvider =
-                async () => await accessTokens.GetAuthorizationTokenAsync(hubUrl, cancellationToken: stopping.Token))
+            .WithUrl(hubUrl, http =>
+            {
+                http.AccessTokenProvider = async () => await accessTokens.GetAuthorizationTokenAsync(hubUrl, cancellationToken: stopping.Token);
+                // Directo por WebSocket, sin negotiate: con varias instancias de la API, cada paso podría caer en una distinta.
+                http.SkipNegotiation = true;
+                http.Transports = HttpTransportType.WebSockets;
+            })
             .AddJsonProtocol(json => json.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
             .Build();
 
