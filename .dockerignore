@@ -1,0 +1,22 @@
+# Todo afuera, y solo entra lo que hace falta para compilar. Una lista de lo que se excluye se olvida de algo tarde o temprano; así,
+# un archivo nuevo (un .env, un volcado de la base) no llega a una imagen a menos que alguien lo agregue aquí.
+*
+
+!global.json
+!Directory.Build.props
+!Directory.Packages.props
+!dotnet-tools.json
+!src/
+
+# Lo que se genera al compilar en la máquina: distinto sistema operativo, y además vaciaría la caché de Docker en cada cambio.
+**/bin/
+**/obj/
+**/node_modules/
+src/HelpDesk.Bff/wwwroot/
+
+# Solo para desarrollo.
+**/appsettings.Development.json
+**/launchSettings.json
+**/http-client.env.json
+**/*.http
+**/*.user

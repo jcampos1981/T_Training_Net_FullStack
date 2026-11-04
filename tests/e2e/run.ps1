@@ -2,6 +2,7 @@
 #   powershell -File tests/e2e/run.ps1                        todas, menos las largas
 #   powershell -File tests/e2e/run.ps1 -Suite health,cache    solo esas
 #   powershell -File tests/e2e/run.ps1 -Long                  ademas espera el vencimiento real del token (5 min por suite)
+#   powershell -File tests/e2e/run.ps1 -Suite containers -NoBuild    la aplicacion en contenedores (no entra en "todas")
 param(
     [string[]]$Suite = @('all'),
     [switch]$Long,
@@ -113,7 +114,19 @@ $needsPort5173 = [ordered]@{
 }
 foreach ($name in $needsPort5173.Keys) { $definitions[$name] = $needsPort5173[$name] }
 
+# Las imagenes de produccion, con docker compose. Fuera de "todas": construirlas tarda varios minutos la primera vez, y no usa
+# lo que compilo dotnet build.
+$containers = {
+    $compose = @('compose', '-f', "$repo\deploy\compose.yaml", '-f', "$repo\deploy\compose.app.yaml")
+    docker @compose up -d --build --wait --wait-timeout 300 bff admin
+    try { node "$suites\containers.mjs" $root $shots $repo }
+    finally { docker @compose stop admin bff api }
+}
+
+# Con powershell -File, -Suite a,b llega como un solo texto.
+$Suite = @($Suite -split ',')
 $selected = if ($Suite -contains 'all') { @($definitions.Keys) } else { $Suite }
+$definitions['containers'] = $containers
 foreach ($name in $selected) {
     if (-not $definitions.Contains($name)) { throw "No existe la suite '$name'. Disponibles: $($definitions.Keys -join ', ')" }
 }

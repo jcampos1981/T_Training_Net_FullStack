@@ -90,12 +90,13 @@
       "serviceAccountsEnabled": false,
       "redirectUris": [
         "https://localhost:7200/signin-oidc",
-        "http://localhost:5173/signin-oidc"
+        "http://localhost:5173/signin-oidc",
+        "${HELPDESK_BFF_PUBLIC_URL:http://localhost:8081}/signin-oidc"
       ],
       "webOrigins": [],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://localhost:7200/signout-callback-oidc##http://localhost:5173/signout-callback-oidc"
+        "post.logout.redirect.uris": "https://localhost:7200/signout-callback-oidc##http://localhost:5173/signout-callback-oidc##${HELPDESK_BFF_PUBLIC_URL:http://localhost:8081}/signout-callback-oidc"
       },
       "protocolMappers": [
         {
@@ -125,11 +126,11 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["https://localhost:7300/signin-oidc"],
+      "redirectUris": ["https://localhost:7300/signin-oidc", "${HELPDESK_ADMIN_PUBLIC_URL:http://localhost:8082}/signin-oidc"],
       "webOrigins": [],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://localhost:7300/signout-callback-oidc"
+        "post.logout.redirect.uris": "https://localhost:7300/signout-callback-oidc##${HELPDESK_ADMIN_PUBLIC_URL:http://localhost:8082}/signout-callback-oidc"
       },
       "protocolMappers": [
         {

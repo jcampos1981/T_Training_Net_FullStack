@@ -1,0 +1,217 @@
+# Cada push a main: compila, prueba, levanta la aplicación completa, revisa las imágenes y las publica en GHCR.
+# En un pull request hace todo eso menos publicar.
+#
+# Las acciones van fijadas por SHA y no por tag: un tag se puede mover. En marzo de 2026 movieron 76 tags de trivy-action para que
+# robaran los secretos de quien los usaba (CVE-2026-33634). El comentario dice a qué versión corresponde cada SHA.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Por defecto, solo lectura. El único job que necesita más lo pide para sí mismo.
+permissions:
+  contents: read
+
+# Un push nuevo a la misma rama cancela la corrida anterior, que ya no interesa.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  test:
+    name: Compilar y probar .NET
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: Directory.Packages.props
+      - name: Compilar, con los avisos como errores
+        run: dotnet build HelpDesk.slnx -c Release -warnaserror
+      # Unitarias, de dominio y de arquitectura, y las de integración: esas levantan SQL Server con Testcontainers.
+      - name: Probar
+        run: dotnet test --no-build -c Release
+
+  portal:
+    name: Compilar y revisar el portal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: src/HelpDesk.Portal
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: src/HelpDesk.Portal/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  infrastructure:
+    name: Compilar las plantillas de Azure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Revisa sintaxis, tipos y las reglas de Bicep, sin una cuenta de Azure. No prueba que el despliegue funcione.
+      - run: az bicep build --file deploy/azure/main.bicep --stdout > /dev/null
+
+  smoke:
+    name: La aplicación completa arranca
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Crear contraseñas solo para esta corrida
+        run: |
+          {
+            echo "MSSQL_SA_PASSWORD=Aa1-$(openssl rand -hex 16)"
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "KEYCLOAK_ADMIN_PASSWORD=$(openssl rand -hex 16)"
+            echo "HELPDESK_DEV_PASSWORD=$(openssl rand -hex 16)"
+            echo "HELPDESK_BFF_CLIENT_SECRET=$(openssl rand -hex 32)"
+            echo "HELPDESK_ADMIN_CLIENT_SECRET=$(openssl rand -hex 32)"
+            echo "HELPDESK_JWT_SIGNING_KEY=$(openssl rand -hex 48 | xxd -r -p | base64 --wrap=0)"
+          } > deploy/.env
+      - name: Levantar la aplicación
+        run: docker compose -f deploy/compose.yaml -f deploy/compose.app.yaml up -d --build --wait --wait-timeout 300 bff admin
+      - name: Preguntarle a cada una cómo está
+        run: |
+          curl --fail --silent --show-error http://localhost:8081/health/ready
+          curl --fail --silent --show-error http://localhost:8082/health/ready
+      # Un health check verde no dice que la página funcione: sin blazor.web.js, el panel arranca sano y queda en blanco.
+      - name: Comprobar que los frontends llegaron a las imágenes
+        run: |
+          curl --fail --silent --show-error --output /dev/null http://localhost:8081/
+          curl --fail --silent --show-error --output /dev/null http://localhost:8082/_framework/blazor.web.js
+      - name: Mostrar los logs si algo falló
+        if: failure()
+        run: docker compose -f deploy/compose.yaml -f deploy/compose.app.yaml logs --no-color --tail 100
+
+  images:
+    name: Imagen de ${{ matrix.name }}
+    needs: [test, portal, infrastructure, smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: api, dockerfile: src/HelpDesk.Api/Dockerfile, target: api }
+          - { name: migrator, dockerfile: src/HelpDesk.Api/Dockerfile, target: migrator }
+          - { name: bff, dockerfile: src/HelpDesk.Bff/Dockerfile, target: bff }
+          - { name: admin, dockerfile: src/HelpDesk.Admin/Dockerfile, target: admin }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Construir, sin publicar todavía
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          load: true
+          tags: helpdesk-${{ matrix.name }}:scan
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      # Falla con una vulnerabilidad alta o crítica que ya tenga arreglo: las demás no se pueden resolver actualizando.
+      - name: Buscar vulnerabilidades
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.1
+          image-ref: helpdesk-${{ matrix.name }}:scan
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Iniciar sesión en GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Decidir los tags
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/helpdesk-${{ matrix.name }}
+          # El SHA identifica exactamente qué código corre. Un despliegue usa ese tag, no latest, que cambia solo.
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Publicar
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          # Con quién y cómo se construyó (provenance) y qué paquetes trae (SBOM), publicados junto a la imagen.
+          provenance: mode=max
+          sbom: true
+
+  deploy:
+    name: Desplegar en Azure
+    needs: images
+    # Solo si el repositorio tiene Azure configurado (ver deploy/azure/README.md). Sin esas variables, el pipeline termina en las imágenes.
+    if: github.event_name == 'push' && vars.AZURE_CLIENT_ID != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      id-token: write # el login con OIDC: GitHub no guarda ninguna contraseña de Azure
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      PREFIX: helpdesk
+      IMAGES: ghcr.io/${{ github.repository_owner }}
+      TAG: sha-${{ github.sha }}
+    steps:
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # Primero las migraciones: el código nuevo espera el esquema nuevo. Por eso cada migración debe seguir sirviéndole al código anterior.
+      - name: Aplicar las migraciones
+        run: |
+          az containerapp job update --name "$PREFIX-migrator" --resource-group "$RESOURCE_GROUP" --image "$IMAGES/helpdesk-migrator:$TAG" --output none
+          execution=$(az containerapp job start --name "$PREFIX-migrator" --resource-group "$RESOURCE_GROUP" --query name --output tsv)
+
+          for _ in $(seq 1 60); do
+            status=$(az containerapp job execution show --name "$PREFIX-migrator" --resource-group "$RESOURCE_GROUP" --job-execution-name "$execution" --query properties.status --output tsv)
+            echo "$execution: $status"
+            case "$status" in
+              Succeeded) exit 0 ;;
+              Failed|Stopped|Degraded) exit 1 ;;
+            esac
+            sleep 10
+          done
+
+          echo "Las migraciones no terminaron a tiempo."
+          exit 1
+      - name: Actualizar las aplicaciones
+        run: |
+          for app in api bff admin; do
+            az containerapp update --name "$PREFIX-$app" --resource-group "$RESOURCE_GROUP" --image "$IMAGES/helpdesk-$app:$TAG" --output none
+          done

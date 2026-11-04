@@ -7,6 +7,8 @@
 #   docker compose -f deploy/compose.yaml stop       # detiene (los datos se conservan)
 #   docker compose -f deploy/compose.yaml down -v    # elimina contenedores Y datos
 #
+# La aplicación en contenedores, sobre estos mismos servicios, está en compose.app.yaml.
+#
 # Las contraseñas se leen de deploy/.env (ignorado por git). Plantilla: deploy/.env.example
 
 name: helpdesk
@@ -93,6 +95,9 @@ services:
       HELPDESK_ADMIN_CLIENT_SECRET: ${HELPDESK_ADMIN_CLIENT_SECRET:?Falta HELPDESK_ADMIN_CLIENT_SECRET en deploy/.env}
       # URL pública fija: es el "iss" de los tokens, y la API lo compara con Keycloak:Authority.
       KC_HOSTNAME: http://localhost:8080
+      # Los contenedores llegan a Keycloak por keycloak:8080. Las direcciones que usa el servidor (token, llaves) salen con el host
+      # por el que preguntó; las del navegador y el "iss" siguen siendo las de KC_HOSTNAME.
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HEALTH_ENABLED: "true"
     ports:
       - "127.0.0.1:8080:8080"

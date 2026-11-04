@@ -1,0 +1,114 @@
+# La aplicación completa en contenedores, con las imágenes de producción, sobre los servicios de compose.yaml.
+#
+#   docker compose -f deploy/compose.yaml -f deploy/compose.app.yaml up -d --build --wait bff admin
+#
+#   Portal del cliente: http://localhost:8081
+#   Panel del equipo:   http://localhost:8082
+#
+# La API no se publica en la máquina: solo la alcanzan el BFF y el panel, por la red interna de Compose.
+# Las contraseñas se leen de deploy/.env (ignorado por git). Plantilla: deploy/.env.example
+#
+# Sin TLS: los navegadores tratan a localhost como un contexto seguro, y por eso aceptan las cookies Secure. Fuera de esta máquina
+# hace falta https, y Keycloak__RequireHttpsMetadata debe volver a su valor por defecto.
+
+x-hardened: &hardened
+  restart: unless-stopped
+  read_only: true           # nada escribe en la imagen; lo que deba guardarse va en /keys
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+x-keycloak: &keycloak
+  # Authority es la dirección que ve el navegador, y MetadataAddress la que alcanzan los contenedores (ver KeycloakDiscovery).
+  Keycloak__Authority: http://localhost:8080/realms/helpdesk
+  Keycloak__MetadataAddress: http://keycloak:8080/realms/helpdesk/.well-known/openid-configuration
+  Keycloak__RequireHttpsMetadata: "false"
+
+services:
+  # Corre una vez y termina. Separado de la API: con varias instancias, cada una intentaría migrar al arrancar, y la API no
+  # necesita permisos para cambiar el esquema.
+  migrator:
+    image: helpdesk-migrator:local
+    build:
+      context: ..
+      dockerfile: src/HelpDesk.Api/Dockerfile
+      target: migrator
+    environment:
+      ConnectionStrings__HelpDesk: Server=sqlserver,1433;Database=HelpDesk;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *hardened
+    image: helpdesk-api:local
+    build:
+      context: ..
+      dockerfile: src/HelpDesk.Api/Dockerfile
+      target: api
+    environment:
+      <<: *keycloak
+      ConnectionStrings__HelpDesk: Server=sqlserver,1433;Database=HelpDesk;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True
+      ConnectionStrings__Redis: redis:6379
+      Jwt__SigningKey: ${HELPDESK_JWT_SIGNING_KEY:?Falta HELPDESK_JWT_SIGNING_KEY en deploy/.env}
+      DataProtection__KeysDirectory: /keys
+    volumes:
+      - api-keys:/keys
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+  bff:
+    <<: *hardened
+    image: helpdesk-bff:local
+    build:
+      context: ..
+      dockerfile: src/HelpDesk.Bff/Dockerfile
+      target: bff
+    environment:
+      <<: *keycloak
+      Keycloak__ClientSecret: ${HELPDESK_BFF_CLIENT_SECRET:?Falta HELPDESK_BFF_CLIENT_SECRET en deploy/.env}
+      ReverseProxy__Clusters__helpdesk-api__Destinations__api__Address: http://api:8080/
+      DataProtection__KeysDirectory: /keys
+    ports:
+      - "127.0.0.1:8081:8080"
+      - "[::1]:8081:8080"
+    volumes:
+      - bff-keys:/keys
+    depends_on:
+      api:
+        condition: service_healthy
+
+  admin:
+    <<: *hardened
+    image: helpdesk-admin:local
+    build:
+      context: ..
+      dockerfile: src/HelpDesk.Admin/Dockerfile
+      target: admin
+    environment:
+      <<: *keycloak
+      Keycloak__ClientSecret: ${HELPDESK_ADMIN_CLIENT_SECRET:?Falta HELPDESK_ADMIN_CLIENT_SECRET en deploy/.env}
+      HelpDeskApi__BaseUrl: http://api:8080
+      DataProtection__KeysDirectory: /keys
+    ports:
+      - "127.0.0.1:8082:8080"
+      - "[::1]:8082:8080"
+    volumes:
+      - admin-keys:/keys
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  api-keys:
+  bff-keys:
+  admin-keys:

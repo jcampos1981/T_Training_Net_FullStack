@@ -187,10 +187,12 @@ finally {
     Start-Sleep -Seconds 2
 }
 
-Write-Output '--- 6. Renovacion del access token (BFF reiniciado: renueva si faltan menos de 4:59) ---'
-$bffProcess = Start-Bff '00:04:59'
+# Renueva cuando el token tiene mas de 5 segundos. Con un margen menor, "justo despues" depende de lo rapido que responda Keycloak:
+# recien arrancado tarda mas de un segundo en cerrar la sesion, y el token ya estaria por renovarse otra vez.
+Write-Output '--- 6. Renovacion del access token (BFF reiniciado: renueva si faltan menos de 4:55) ---'
+$bffProcess = Start-Bff '00:04:55'
 try {
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 6
     $renewed = Send $laura GET "$Bff/api/me" $null $csrf
     Check 'la cookie sobrevive al reinicio (llaves de Data Protection en disco)' ($renewed.Status -eq 200) "status=$($renewed.Status)"
     Check 'el BFF renovo el access token con el refresh token' ((Get-RefreshCount) -ge 1) "renovaciones=$(Get-RefreshCount)"
@@ -204,7 +206,7 @@ try {
     Check 'admin de Keycloak cierra las sesiones de laura' ($kill.Status -eq 204) "status=$($kill.Status)"
     $stillValid = Send $laura GET "$Bff/api/me" $null $csrf
     Check 'justo despues: 200 (el access token recien renovado sigue vigente)' ($stillValid.Status -eq 200) "status=$($stillValid.Status) renovaciones=$(Get-RefreshCount)"
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 6
     $revoked = Send $laura GET "$Bff/api/me" $null $csrf
     Check 'en la proxima renovacion Keycloak se niega: el BFF borra la cookie y responde 401' ($revoked.Status -eq 401 -and (($revoked.SetCookies -join ' ') -match '__Host-helpdesk=;')) "status=$($revoked.Status)"
 }
