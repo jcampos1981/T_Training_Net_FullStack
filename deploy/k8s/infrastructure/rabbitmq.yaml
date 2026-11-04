@@ -34,6 +34,9 @@ spec:
         runAsUser: 999
         runAsGroup: 999
         fsGroup: 999
+        # Sin esto, cada vez que arranca el pod Kubernetes le da permisos de grupo a todo el disco, también al archivo .erlang.cookie.
+        # RabbitMQ exige que solo lo lea su dueño, y no arranca: el primer inicio funciona, y falla en cuanto se reinicia.
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
       containers:

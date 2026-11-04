@@ -5,6 +5,7 @@ using HelpDesk.Api.Mediation;
 using HelpDesk.Api.Paging;
 using HelpDesk.Domain;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
 
@@ -55,6 +56,8 @@ public sealed class AgentsController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Failure(result.Error);
     }
 
+    // Puede tocar miles de filas: lo mismo que espera el panel por cada intento (ver ResilienceSetup).
+    [RequestTimeout(30_000)]
     [HttpPost("{name}/reassign")]
     [Authorize(Policy = HelpDeskPolicies.Supervision)]
     [EndpointSummary("Reasigna los tickets abiertos de un agente a otro, en una sola transacción. Solo supervisión.")]

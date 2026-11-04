@@ -41,6 +41,7 @@ public static class NotificationsFeature
         // el token haya vencido o el usuario haya perdido el acceso. Así se cierra cuando vence el token; el cliente se
         // reconecta con uno nuevo, y si la sesión ya no existe, no puede.
         app.MapHub<TicketEventsHub>(TicketEventsPath, options => options.CloseOnAuthenticationExpiration = true)
+            .DisableRequestTimeout() // una conexión dura horas: el límite es para las peticiones normales
             .RequireAuthorization(HelpDeskPolicies.LiveEvents);
 
         return app;

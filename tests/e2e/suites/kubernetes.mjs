@@ -53,11 +53,11 @@ const rolloutDone = (kind, timeout = '5m') => new Promise((resolve) => {
 });
 
 // Una petición por el Ingress, con una conexión TCP nueva: Traefik la puede mandar a cualquier pod.
-function request(host, urlPath, headers = {}, method = 'GET') {
+function request(host, urlPath, headers = {}, method = 'GET', timeout = 15_000) {
   return new Promise((resolve) => {
     const started = Date.now();
     const call = https.request(
-      { host: '127.0.0.1', port: 8443, path: urlPath, method, servername: host, rejectUnauthorized: false, agent: false, timeout: 15_000, headers: { host: `${host}:8443`, ...headers } },
+      { host: '127.0.0.1', port: 8443, path: urlPath, method, servername: host, rejectUnauthorized: false, agent: false, timeout, headers: { host: `${host}:8443`, ...headers } },
       (response) => {
         response.resume();
         response.on('end', () => resolve({ status: response.statusCode, ms: Date.now() - started }));
@@ -290,8 +290,8 @@ try {
   kubectl('scale', 'statefulset/sqlserver', '--replicas=0');
   check('La API sale del tráfico: /health/ready falla', await waitUntil(() => podsOf('api').every((pod) => !isReady(pod)), 120_000));
   check('Pero no se reinicia: reiniciar no arregla una base caída', restartsOf('api') === apiRestarts, `${restartsOf('api')} reinicios`);
-  const withoutDatabase = await request('portal.localhost', '/api/portal/tickets', { ...sessionCookie, 'x-csrf': '1' });
-  check('El BFF responde un error, no se queda colgado', withoutDatabase.status >= 500, `${withoutDatabase.status} en ${withoutDatabase.ms} ms`);
+  const withoutDatabase = await request('portal.localhost', '/api/portal/tickets', { ...sessionCookie, 'x-csrf': '1' }, 'GET', 40_000);
+  check('Una petición falla con un error, y no se queda colgada: el límite de la API es de 15 s', withoutDatabase.status >= 500 && withoutDatabase.ms < 20_000, `${withoutDatabase.status} en ${withoutDatabase.ms} ms`);
   const bffHealth = await request('portal.localhost', '/health/ready');
   check('El BFF sigue en el tráfico: su dependencia caída no lo saca', bffHealth.status === 200, `${bffHealth.status}`);
   kubectl('scale', 'statefulset/sqlserver', '--replicas=1');

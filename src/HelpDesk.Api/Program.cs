@@ -18,6 +18,7 @@ using HelpDesk.Api.OpenApi;
 using HelpDesk.Api.Outbox;
 using HelpDesk.Api.Security;
 using HelpDesk.ServiceDefaults;
+using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using StackExchange.Redis;
@@ -89,6 +90,14 @@ builder.Services.AddDbContextPool<HelpDeskDbContext>((provider, options) =>
 ConfigurationOptions? redis = RedisSettings.From(builder.Configuration);
 builder.Services.AddHelpDeskCaching(redis);  // output caching y HybridCache (memoria + Redis)
 
+// Ninguna petición espera para siempre. Con la base caída, los reintentos de EF pueden tomar más de un minuto. Un pod que ya salió del tráfico
+// igual las recibe: el BFF las manda por conexiones que ya tenía abiertas. Es 503, y el token de cancelación llega hasta la consulta.
+builder.Services.AddRequestTimeouts(options => options.DefaultPolicy = new RequestTimeoutPolicy
+{
+    Timeout = TimeSpan.FromSeconds(15),
+    TimeoutStatusCode = StatusCodes.Status503ServiceUnavailable
+});
+
 builder.Services.AddFrontendCors();          // qué frontends de otro origen pueden leer las respuestas
 builder.Services.AddHelpDeskRateLimiting();  // límite por usuario y, más estricto, para login
 
@@ -119,7 +128,8 @@ app.UseCors();                                // 4º: antes de autenticar, porqu
 app.UseAuthentication();                      // 5º: arma el usuario (ClaimsPrincipal) con la cookie o el token
 app.UseRateLimiter();                         // 6º: después de autenticar, para contar por usuario y no solo por IP
 app.UseAuthorization();                       // 7º: decide si ese usuario puede llegar al endpoint (401 / 403)
-app.UseOutputCache();                         // 8º: después de autorizar: lo guardado no se entrega a quien no puede verlo
+app.UseRequestTimeouts();                     // 8º: lo que tarde de más responde 503
+app.UseOutputCache();                         // 9º: después de autorizar: lo guardado no se entrega a quien no puede verlo
 
 if (app.Environment.IsDevelopment())
 {
