@@ -104,7 +104,7 @@ async function signInToPortal(page, user) {
 
 section('El clúster');
 const deployments = json('get', 'deployments').items;
-for (const name of ['api', 'bff', 'admin']) {
+for (const name of ['api', 'bff', 'admin', 'worker']) {
   const deployment = deployments.find((item) => item.metadata.name === name);
   check(`${name}: al menos 2 réplicas listas`, (deployment?.status.readyReplicas ?? 0) >= 2, `${deployment?.status.readyReplicas} listas`);
   const pod = podsOf(name)[0];
@@ -190,6 +190,30 @@ try {
   check('Todas las pestañas lo reciben, estén en la réplica que estén', received.every(Boolean), `${received.filter(Boolean).length} de ${tabs.length}`);
   await Promise.all(tabs.slice(1).map((tab) => tab.close()));
   await staff.screenshot({ path: path.join(shotsDir, 'f10-panel.png') });
+
+  section('Eventos: dos workers en la misma cola');
+  const code = `T-${String(ticketId).padStart(5, '0')}`;
+  const emailsOf = (text) => podsOf('worker').filter(isReady).reduce((total, pod) => total + (kubectl('logs', pod.metadata.name).split(text).length - 1), 0);
+  check('El evento del ticket nuevo llegó a un worker', await waitUntil(() => emailsOf(`Correo enviado sobre ${code}: Recibimos`) > 0, 60_000));
+  check('Y solo a uno: el correo sale una vez', emailsOf(`Correo enviado sobre ${code}: Recibimos`) === 1);
+
+  section('RabbitMQ se reinicia: no se pierde ningún evento');
+  kubectl('scale', 'statefulset/rabbitmq', '--replicas=0');
+  await waitUntil(() => podsOf('rabbitmq').length === 0, 60_000);
+  await customer.goto(`${portal}/tickets/new`);
+  await customer.fill('#title', `${tag} sin rabbit`);
+  await customer.fill('#description', 'Creado con RabbitMQ detenido.');
+  await customer.getByRole('button', { name: 'Abrir ticket' }).click();
+  await customer.waitForURL(new RegExp(`/tickets/(?!${ticketId}$)\\d+`));
+  const offlineId = Number(new URL(customer.url()).pathname.split('/').pop());
+  created.push(offlineId);
+  const offlineCode = `T-${String(offlineId).padStart(5, '0')}`;
+  check('El cliente puede crear su ticket igual', offlineId > 0, offlineCode);
+  check('La API sigue en el tráfico', podsOf('api').every(isReady));
+  kubectl('scale', 'statefulset/rabbitmq', '--replicas=1');
+  check('RabbitMQ vuelve', await rolloutDone('statefulset/rabbitmq', '5m'));
+  check('El evento pendiente llega a un worker, una sola vez', await waitUntil(() => emailsOf(`Correo enviado sobre ${offlineCode}: Recibimos`) === 1, 120_000));
+  await customer.goto(`${portal}/tickets/${ticketId}`);
 
   section('Las llaves de Data Protection, compartidas');
   const reads = await Promise.all(Array.from({ length: 12 }, () => request('portal.localhost', '/bff/user', sessionCookie)));

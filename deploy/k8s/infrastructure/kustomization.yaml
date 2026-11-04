@@ -12,6 +12,7 @@ resources:
   - traefik.yaml
   - sqlserver.yaml
   - keycloak.yaml
+  - rabbitmq.yaml
 
 configMapGenerator:
   - name: keycloak-realm

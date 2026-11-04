@@ -1,4 +1,4 @@
-# Servicios locales para HelpDesk: SQL Server, PostgreSQL, Redis y Keycloak.
+# Servicios locales para HelpDesk: SQL Server, PostgreSQL, Redis, RabbitMQ y Keycloak.
 #
 # Uso (desde la raíz del repo):
 #   docker compose -f deploy/compose.yaml up -d      # levanta todo en segundo plano
@@ -75,6 +75,26 @@ services:
       timeout: 3s
       retries: 10
 
+  # Los eventos de tickets. Consola de administración: http://localhost:15672 (usuario helpdesk, contraseña RABBITMQ_PASSWORD de deploy/.env).
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: helpdesk
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Falta RABBITMQ_PASSWORD en deploy/.env}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "[::1]:5672:5672"
+      - "127.0.0.1:15672:15672"
+      - "[::1]:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
   # Proveedor de identidad (OpenID Connect). Consola de administración: http://localhost:8080/admin
   # (usuario admin, contraseña KEYCLOAK_ADMIN_PASSWORD de deploy/.env).
   keycloak:
@@ -116,3 +136,4 @@ volumes:
   sqlserver-data:
   postgres-data:
   redis-data:
+  rabbitmq-data:

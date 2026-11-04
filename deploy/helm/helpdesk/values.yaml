@@ -69,6 +69,7 @@ apps:
     secretEnv:
       ConnectionStrings__HelpDesk: connection-string
       ConnectionStrings__Redis: redis-connection
+      ConnectionStrings__RabbitMq: rabbitmq-connection
       Jwt__SigningKey: jwt-signing-key
 
   bff:
@@ -103,6 +104,20 @@ apps:
       HelpDeskApi__BaseUrl: http://api:8080
     secretEnv:
       Keycloak__ClientSecret: admin-client-secret
+
+  worker:
+    image: helpdesk-worker
+    # Dos consumidores de la misma cola: RabbitMQ reparte los mensajes entre ellos, y si uno se cae el otro sigue. Sin autoescalado por CPU, porque
+    # lo que mide si hace falta otro es el largo de la cola (KEDA lo hace).
+    replicas: 2
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 256Mi }
+    autoscaling: { enabled: false }
+    env: {}
+    secretEnv:
+      ConnectionStrings__HelpDesk: connection-string
+      ConnectionStrings__RabbitMq: rabbitmq-connection
 
 migrator:
   image: helpdesk-migrator

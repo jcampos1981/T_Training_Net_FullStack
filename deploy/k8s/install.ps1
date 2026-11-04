@@ -27,10 +27,11 @@ Write-Output '--- Namespace y secretos'
 kubectl apply -f deploy/k8s/infrastructure/namespace.yaml; Assert-Ok 'namespace'
 & "$PSScriptRoot\create-secrets.ps1"; Assert-Ok 'secretos'
 
-Write-Output '--- SQL Server y Keycloak (Kustomize)'
+Write-Output '--- SQL Server, Keycloak y RabbitMQ (Kustomize)'
 kubectl kustomize --load-restrictor LoadRestrictionsNone deploy/k8s/infrastructure | kubectl apply -f -; Assert-Ok 'infraestructura'
 kubectl -n helpdesk rollout status statefulset/sqlserver --timeout=20m; Assert-Ok 'SQL Server'
 kubectl -n helpdesk rollout status deployment/keycloak --timeout=10m; Assert-Ok 'Keycloak'
+kubectl -n helpdesk rollout status statefulset/rabbitmq --timeout=10m; Assert-Ok 'RabbitMQ'
 
 Write-Output '--- Redis (chart de terceros)'
 powershell -NoProfile -File $helm upgrade --install redis valkey --repo https://valkey.io/valkey-helm/ --version 0.12.1 `
@@ -39,7 +40,7 @@ powershell -NoProfile -File $helm upgrade --install redis valkey --repo https://
 if ($Local) {
     Write-Output '--- Importar las imagenes locales al cluster'
     # Con cmd: la tubería de PowerShell 5.1 corrompe los datos binarios.
-    cmd /c 'docker save helpdesk-api:local helpdesk-bff:local helpdesk-admin:local helpdesk-migrator:local | docker exec -i helpdesk-k8s-k3s-1 ctr -n k8s.io images import -'
+    cmd /c 'docker save helpdesk-api:local helpdesk-bff:local helpdesk-admin:local helpdesk-worker:local helpdesk-migrator:local | docker exec -i helpdesk-k8s-k3s-1 ctr -n k8s.io images import -'
     Assert-Ok 'importar imagenes'
 
     Write-Output '--- HelpDesk (nuestro chart, con imagenes locales)'
@@ -47,8 +48,8 @@ if ($Local) {
     Assert-Ok 'HelpDesk'
 
     # El tag "local" no cambia entre versiones: sin esto, Kubernetes no se entera de que hay una imagen nueva.
-    kubectl -n helpdesk rollout restart deployment/api deployment/bff deployment/admin; Assert-Ok 'reiniciar'
-    foreach ($app in 'api', 'bff', 'admin') {
+    kubectl -n helpdesk rollout restart deployment/api deployment/bff deployment/admin deployment/worker; Assert-Ok 'reiniciar'
+    foreach ($app in 'api', 'bff', 'admin', 'worker') {
         kubectl -n helpdesk rollout status "deployment/$app" --timeout=5m; Assert-Ok $app
     }
 }

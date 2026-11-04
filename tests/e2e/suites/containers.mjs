@@ -4,6 +4,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 const [depsDir, shotsDir, repo] = process.argv.slice(2);
 const { chromium } = createRequire(path.join(depsDir, 'package.json'))('playwright-core');
@@ -26,6 +27,15 @@ const inspect = (container, format) => docker('inspect', '--format', format, `he
 const recreate = (service) => compose('up', '-d', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', '120', service);
 
 const has = (locator, timeout = 20_000) => locator.first().waitFor({ timeout }).then(() => true, () => false);
+
+async function waitLogs(condition, timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (condition()) return true;
+    await sleep(1000);
+  }
+  return condition();
+}
 
 async function signIn(page, user) {
   await page.waitForURL(/localhost:8080/);
@@ -54,7 +64,7 @@ function watchForBrokenPage(page, problems) {
 }
 
 section('Las imágenes');
-for (const service of ['api', 'bff', 'admin']) {
+for (const service of ['api', 'bff', 'admin', 'worker']) {
   const user = inspect(service, '{{.Config.User}}');
   check(`${service}: no corre como root`, user !== '' && user !== 'root' && user !== '0', `usuario ${user}`);
   check(`${service}: sano según Docker`, inspect(service, '{{.State.Health.Status}}') === 'healthy');
@@ -134,6 +144,38 @@ try {
   check('Las fechas salen en español: la imagen trae ICU', await has(staff.locator('time', { hasText: /\d{1,2} (ene|feb|mar|abr|may|jun|jul|ago|sept?|oct|nov|dic)\.? \d{4}/ })));
   // Antes de recrear nada: después, el navegador registra los errores de red que la prueba provoca.
   check('Nada roto en la consola: scripts, estilos ni Content-Security-Policy', problems.length === 0, problems.slice(0, 3).join(' | '));
+
+  section('Eventos: el worker avisa al cliente');
+  const code = `T-${String(ticketId).padStart(5, '0')}`;
+  const workerLogs = () => docker('logs', 'helpdesk-worker-1');
+  const emailSent = (text) => waitLogs(() => workerLogs().includes(text));
+  check('El worker recibió el evento del ticket nuevo: pasó por el outbox y RabbitMQ', await emailSent(`Correo enviado sobre ${code}: Recibimos`));
+
+  section('RabbitMQ caído: no se pierde ningún evento');
+  compose('stop', 'rabbitmq');
+  await customer.goto(`${portal}/tickets/new`);
+  await customer.fill('#title', `${tag} sin rabbit`);
+  await customer.fill('#description', 'Creado con RabbitMQ detenido.');
+  await customer.getByRole('button', { name: 'Abrir ticket' }).click();
+  await customer.waitForURL(new RegExp(`/tickets/(?!${ticketId}$)\\d+`));
+  const offlineId = Number(new URL(customer.url()).pathname.split('/').pop());
+  created.push(offlineId);
+  const offlineCode = `T-${String(offlineId).padStart(5, '0')}`;
+  check('El cliente puede crear su ticket igual', offlineId > 0, offlineCode);
+  await sleep(8000);
+  check('Y el aviso todavía no salió', !workerLogs().includes(`Correo enviado sobre ${offlineCode}`));
+  const degraded = await fetch(`${portal}/health/ready`);
+  check('La salud del BFF no se afecta', degraded.status === 200, `${degraded.status}`);
+  compose('start', 'rabbitmq');
+  check('RabbitMQ vuelve', await waitLogs(() => inspect('rabbitmq', '{{.State.Health.Status}}') === 'healthy', 90_000));
+  check('El evento pendiente sale solo, y el worker lo recibe', await emailSent(`Correo enviado sobre ${offlineCode}: Recibimos`));
+  await customer.goto(`${portal}/tickets/${ticketId}`);
+  await comments.first().waitFor({ timeout: 20_000 }).catch(() => {});
+
+  section('Las trazas llegan al dashboard');
+  const traces = await fetch('http://localhost:18888/api/telemetry/resources').then((response) => response.json()).catch(() => []);
+  const reporting = traces.map?.((resource) => resource.name) ?? [];
+  check('El BFF, la API, el panel y el worker envían telemetría', ['helpdesk-api', 'helpdesk-bff', 'helpdesk-admin', 'helpdesk-worker'].every((name) => reporting.includes(name)), reporting.join(', '));
 
   section('Recrear un contenedor: la imagen se pierde, el volumen no');
   recreate('bff');

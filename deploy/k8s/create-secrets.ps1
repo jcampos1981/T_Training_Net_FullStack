@@ -14,6 +14,7 @@ function Read-EnvValue([string]$name) {
 
 $saPassword = Read-EnvValue 'MSSQL_SA_PASSWORD'
 $redisPassword = Read-EnvValue 'HELPDESK_REDIS_PASSWORD'
+$rabbitMqPassword = Read-EnvValue 'RABBITMQ_PASSWORD'
 
 $secret = @{
     apiVersion = 'v1'
@@ -25,6 +26,8 @@ $secret = @{
         'connection-string'       = "Server=sqlserver,1433;Database=HelpDesk;User Id=sa;Password=$saPassword;TrustServerCertificate=True"
         'redis-password'          = $redisPassword
         'redis-connection'        = "redis:6379,password=$redisPassword"
+        'rabbitmq-password'       = $rabbitMqPassword
+        'rabbitmq-connection'     = "amqp://helpdesk:$rabbitMqPassword@rabbitmq:5672"
         'jwt-signing-key'         = Read-EnvValue 'HELPDESK_JWT_SIGNING_KEY'
         'bff-client-secret'       = Read-EnvValue 'HELPDESK_BFF_CLIENT_SECRET'
         'admin-client-secret'     = Read-EnvValue 'HELPDESK_ADMIN_CLIENT_SECRET'

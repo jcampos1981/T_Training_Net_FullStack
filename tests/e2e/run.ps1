@@ -4,6 +4,7 @@
 #   powershell -File tests/e2e/run.ps1 -Long                  ademas espera el vencimiento real del token (5 min por suite)
 #   powershell -File tests/e2e/run.ps1 -Suite containers -NoBuild    la aplicacion en contenedores (no entra en "todas")
 #   powershell -File tests/e2e/run.ps1 -Suite kubernetes -NoBuild    la aplicacion en el cluster de deploy/k8s, ya instalada (tampoco)
+#   powershell -File tests/e2e/run.ps1 -Suite aspire                 la aplicacion orquestada por Aspire (tampoco)
 param(
     [string[]]$Suite = @('all'),
     [switch]$Long,
@@ -119,9 +120,9 @@ foreach ($name in $needsPort5173.Keys) { $definitions[$name] = $needsPort5173[$n
 # lo que compilo dotnet build.
 $containers = {
     $compose = @('compose', '-f', "$repo\deploy\compose.yaml", '-f', "$repo\deploy\compose.app.yaml")
-    docker @compose up -d --build --wait --wait-timeout 300 bff admin
+    docker @compose up -d --build --wait --wait-timeout 300 bff admin worker dashboard
     try { node "$suites\containers.mjs" $root $shots $repo }
-    finally { docker @compose stop admin bff api }
+    finally { docker @compose stop admin bff worker api dashboard }
 }
 
 # Con powershell -File, -Suite a,b llega como un solo texto.
@@ -129,6 +130,34 @@ $Suite = @($Suite -split ',')
 $selected = if ($Suite -contains 'all') { @($definitions.Keys) } else { $Suite }
 $definitions['containers'] = $containers
 $definitions['kubernetes'] = { node "$suites\kubernetes.mjs" $root $shots $repo }
+# Aspire usa los mismos puertos y el mismo volumen que Compose: no pueden correr a la vez.
+$definitions['aspire'] = {
+    docker compose -f "$repo\deploy\compose.yaml" stop
+    $appHost = Start-Process dotnet -ArgumentList 'run', '--no-build', '--project', "$repo\src\HelpDesk.AppHost", '--launch-profile', 'http' -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput "$shots\apphost.log" -RedirectStandardError "$shots\apphost.err.log"
+    try {
+        Wait-Url 'http://localhost:15888/'
+        for ($i = 0; $i -lt 150; $i++) {
+            if ((curl.exe -sk -o NUL -w '%{http_code}' 'https://localhost:7300/health/ready') -eq '200' -and (curl.exe -sk -o NUL -w '%{http_code}' 'https://localhost:7200/health/ready') -eq '200') { break }
+            Start-Sleep -Seconds 4
+        }
+        node "$suites\aspire.mjs" $root $shots
+    }
+    finally {
+        # Solo el AppHost: su orquestador (dcp) se da cuenta y borra los contenedores. Matarlo a él los dejaría vivos, y Aspire comparte el
+        # volumen de SQL Server con Compose. Un solo SQL Server puede abrirlo a la vez: el segundo se niega a arrancar.
+        Get-Process HelpDesk.AppHost -ErrorAction SilentlyContinue | Stop-Process
+        $aspireContainers = '^(sql|Redis|RabbitMq|keycloak|migrator)-[a-z]{8}$'
+        for ($i = 0; $i -lt 40; $i++) {
+            if (-not (docker ps --format '{{.Names}}' | Where-Object { $_ -match $aspireContainers })) { break }
+            Start-Sleep -Seconds 3
+        }
+        $left = @(docker ps -a --format '{{.Names}}' | Where-Object { $_ -match $aspireContainers })
+        if ($left.Count -gt 0) { docker rm -f @left | Out-Null }
+        Get-Process HelpDesk.Api, HelpDesk.Bff, HelpDesk.Admin, HelpDesk.Worker, dcp, dcpctrl -ErrorAction SilentlyContinue | Stop-Process -Force
+        docker compose -f "$repo\deploy\compose.yaml" up -d --wait
+    }
+}
 foreach ($name in $selected) {
     if (-not $definitions.Contains($name)) { throw "No existe la suite '$name'. Disponibles: $($definitions.Keys -join ', ')" }
 }
