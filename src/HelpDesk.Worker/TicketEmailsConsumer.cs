@@ -56,10 +56,18 @@ public sealed class TicketEmailsConsumer(
     {
         await base.StopAsync(cancellationToken);
 
-        // El host puede llamarlo más de una vez, y cerrar una conexión ya cerrada lanza una excepción.
-        if (connection is { IsOpen: true })
+        if (connection is null)
+        {
+            return;
+        }
+
+        try
         {
             await connection.CloseAsync(cancellationToken);
+        }
+        catch (AlreadyClosedException)
+        {
+            // Al detenerse, el host puede llamar a esto más de una vez, incluso a la vez. Preguntar antes por IsOpen no alcanza: es una carrera.
         }
     }
 
