@@ -7,7 +7,7 @@
 #   docker compose -f deploy/compose.yaml stop       # detiene (los datos se conservan)
 #   docker compose -f deploy/compose.yaml down -v    # elimina contenedores Y datos
 #
-# La aplicación en contenedores, sobre estos mismos servicios, está en compose.app.yaml.
+# La aplicación en contenedores, sobre estos mismos servicios, está en compose.app.yaml. Un modelo local para la respuesta sugerida, en compose.ai.yaml.
 #
 # Las contraseñas se leen de deploy/.env (ignorado por git). Plantilla: deploy/.env.example
 

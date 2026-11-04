@@ -1,0 +1,65 @@
+# La respuesta sugerida, con un modelo local: sin clave, sin costo, y los datos de los clientes no salen de la máquina.
+# Es un archivo aparte porque pesa: la imagen y los modelos ocupan varios GB. Sin él, la aplicación funciona igual, y el botón no aparece.
+#
+#   docker compose -f deploy/compose.yaml -f deploy/compose.app.yaml -f deploy/compose.ai.yaml up -d --build --wait bff admin worker dashboard
+#
+# Solo el modelo, para correr la aplicación con dotnet run o medirlo con tests/HelpDesk.AiEval:
+#
+#   docker compose -f deploy/compose.yaml -f deploy/compose.app.yaml -f deploy/compose.ai.yaml run --rm ollama-models
+
+x-ai: &ai
+  Ai__Enabled: "true"
+  Ai__OllamaEndpoint: http://ollama:11434
+
+x-models-ready: &models-ready
+  ollama-models:
+    condition: service_completed_successfully
+
+services:
+  ollama:
+    image: ollama/ollama:0.40.14
+    environment:
+      # Por defecto descarga el modelo a los 5 minutos sin uso, y cargarlo de nuevo hace esperar medio minuto más a la siguiente persona.
+      OLLAMA_KEEP_ALIVE: 1h
+    ports:
+      - "127.0.0.1:11434:11434"
+      - "[::1]:11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  # Baja los modelos que falten y termina. Quedan en el volumen. Solo pregunta por internet si falta alguno: así el modelo no cambia solo, y todo arranca sin conexión.
+  ollama-models:
+    image: ollama/ollama:0.40.14
+    entrypoint:
+      - /bin/sh
+      - -c
+      - for model in paraphrase-multilingual gemma3:4b; do ollama show "$$model" > /dev/null 2>&1 || ollama pull "$$model" || exit 1; done
+    environment:
+      OLLAMA_HOST: ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    environment: *ai
+    depends_on: *models-ready
+
+  worker:
+    environment: *ai
+    depends_on: *models-ready
+
+  admin:
+    environment:
+      Suggestions__Enabled: "true"
+
+volumes:
+  ollama-data:

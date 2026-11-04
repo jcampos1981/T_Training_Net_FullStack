@@ -10,12 +10,12 @@ using RabbitMQ.Client.Exceptions;
 
 namespace HelpDesk.Worker;
 
-// Escucha los eventos de tickets. Confirma cada mensaje a mano y solo al terminar: si el proceso se cae antes, RabbitMQ lo entrega de nuevo.
-public sealed class TicketEmailsConsumer(
+// Patrón Template Method: aquí está lo que necesita todo consumidor (conexión, trazas, reintentos), y cada uno solo dice qué cola lee y qué hace con
+// un evento. Confirma cada mensaje a mano y solo al terminar: si el proceso se cae antes, RabbitMQ lo entrega de nuevo.
+public abstract class TicketEventConsumer(
     IConfiguration configuration,
-    TicketEmailHandler handler,
-    IOptions<TicketEmailsOptions> options,
-    ILogger<TicketEmailsConsumer> logger) : BackgroundService
+    IOptions<TicketEventsOptions> options,
+    ILogger logger) : BackgroundService
 {
     private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(5);
 
@@ -29,13 +29,20 @@ public sealed class TicketEmailsConsumer(
 
     public bool IsConnected => consumeChannel is { IsOpen: true };
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected abstract string Queue { get; }
+
+    // Qué eventos le interesan, con la sintaxis de un topic de RabbitMQ.
+    protected abstract string BindingKey { get; }
+
+    protected abstract Task HandleAsync(Guid messageId, string eventType, TicketEventMessage message, CancellationToken cancellationToken);
+
+    protected sealed override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         string connectionString = configuration.GetConnectionString("RabbitMq")
             ?? throw new InvalidOperationException("Falta ConnectionStrings:RabbitMq.");
 
         // Solo el primer intento hay que hacerlo a mano: una vez conectado, el cliente de RabbitMQ se reconecta y recupera el consumidor solo.
-        var factory = new ConnectionFactory { Uri = new Uri(connectionString), ClientProvidedName = "helpdesk-worker" };
+        var factory = new ConnectionFactory { Uri = new Uri(connectionString), ClientProvidedName = $"helpdesk-worker-{Queue}" };
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -75,6 +82,7 @@ public sealed class TicketEmailsConsumer(
     {
         connection?.Dispose();
         base.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     private async Task ConnectAsync(ConnectionFactory factory, CancellationToken cancellationToken)
@@ -85,14 +93,14 @@ public sealed class TicketEmailsConsumer(
             new CreateChannelOptions(publisherConfirmationsEnabled: true, publisherConfirmationTrackingEnabled: true),
             cancellationToken);
 
-        await TicketEventsTopology.DeclareEmailQueuesAsync(consumeChannel, options.Value.RetryDelay, cancellationToken);
+        await TicketEventsTopology.DeclareConsumerQueuesAsync(consumeChannel, Queue, BindingKey, options.Value.RetryDelay, cancellationToken);
         await consumeChannel.BasicQosAsync(0, (ushort)options.Value.Prefetch, global: false, cancellationToken);
 
         var consumer = new AsyncEventingBasicConsumer(consumeChannel);
         consumer.ReceivedAsync += OnReceivedAsync;
-        await consumeChannel.BasicConsumeAsync(TicketEventsTopology.EmailsQueue, autoAck: false, consumer, cancellationToken);
+        await consumeChannel.BasicConsumeAsync(Queue, autoAck: false, consumer, cancellationToken);
 
-        logger.LogInformation("Escuchando {Queue}.", TicketEventsTopology.EmailsQueue);
+        logger.LogInformation("Escuchando {Queue}.", Queue);
     }
 
     private async Task OnReceivedAsync(object sender, BasicDeliverEventArgs delivery)
@@ -103,6 +111,7 @@ public sealed class TicketEmailsConsumer(
         string? parent = TicketEventsTopology.ReadTextHeader(delivery.BasicProperties, TicketEventsTopology.TraceParentHeader);
         using Activity? span = HelpDeskTelemetry.Source.StartActivity($"{eventType} process", ActivityKind.Consumer, parent);
         span?.SetTag("messaging.system", "rabbitmq");
+        span?.SetTag("messaging.destination.name", Queue);
         span?.SetTag("messaging.message.id", delivery.BasicProperties.MessageId);
 
         try
@@ -110,7 +119,7 @@ public sealed class TicketEmailsConsumer(
             TicketEventMessage message = JsonSerializer.Deserialize<TicketEventMessage>(delivery.Body.Span, JsonSerializerOptions.Web)
                 ?? throw new JsonException("El evento está vacío.");
 
-            await handler.HandleAsync(Guid.Parse(delivery.BasicProperties.MessageId!), eventType, message, delivery.CancellationToken);
+            await HandleAsync(Guid.Parse(delivery.BasicProperties.MessageId!), eventType, message, delivery.CancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -122,12 +131,12 @@ public sealed class TicketEmailsConsumer(
         await consumeChannel!.BasicAckAsync(delivery.DeliveryTag, multiple: false, delivery.CancellationToken);
     }
 
-    // Se publica una copia y después se confirma el original: si se cae entre medio, llega dos veces, y por eso el handler es idempotente.
+    // Se publica una copia y después se confirma el original: si se cae entre medio, llega dos veces, y por eso los consumidores son idempotentes.
     private async Task SendToRetryOrDeadAsync(BasicDeliverEventArgs delivery, Exception exception)
     {
         int attempt = AttemptOf(delivery.BasicProperties) + 1;
         bool givingUp = attempt >= options.Value.MaxAttempts;
-        string queue = givingUp ? TicketEventsTopology.EmailsDeadQueue : TicketEventsTopology.EmailsRetryQueue;
+        string queue = givingUp ? TicketEventsTopology.DeadQueueOf(Queue) : TicketEventsTopology.RetryQueueOf(Queue, options.Value.RetryDelay);
 
         if (givingUp)
         {
@@ -152,4 +161,34 @@ public sealed class TicketEmailsConsumer(
 
     private static int AttemptOf(IReadOnlyBasicProperties properties) =>
         properties.Headers?.TryGetValue(TicketEventsTopology.AttemptHeader, out object? value) == true && value is int attempt ? attempt : 0;
+}
+
+// Avisa al cliente por correo.
+public sealed class TicketEmailsConsumer(
+    IConfiguration configuration,
+    TicketEmailHandler handler,
+    IOptions<TicketEventsOptions> options,
+    ILogger<TicketEmailsConsumer> logger) : TicketEventConsumer(configuration, options, logger)
+{
+    protected override string Queue => TicketEventsTopology.EmailsQueue;
+
+    protected override string BindingKey => "ticket.*";
+
+    protected override Task HandleAsync(Guid messageId, string eventType, TicketEventMessage message, CancellationToken cancellationToken) =>
+        handler.HandleAsync(messageId, eventType, message, cancellationToken);
+}
+
+// Un ticket cerrado pasa a ser conocimiento: se indexa para que las sugerencias lo encuentren.
+public sealed class TicketEmbeddingsConsumer(
+    IConfiguration configuration,
+    TicketEmbeddingHandler handler,
+    IOptions<TicketEventsOptions> options,
+    ILogger<TicketEmbeddingsConsumer> logger) : TicketEventConsumer(configuration, options, logger)
+{
+    protected override string Queue => TicketEventsTopology.EmbeddingsQueue;
+
+    protected override string BindingKey => TicketEventType.Closed;
+
+    protected override Task HandleAsync(Guid messageId, string eventType, TicketEventMessage message, CancellationToken cancellationToken) =>
+        handler.HandleAsync(message.TicketId, cancellationToken);
 }

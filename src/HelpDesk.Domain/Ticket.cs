@@ -40,13 +40,19 @@ public sealed record Ticket
     }
 
     // La regla vive en el ticket aunque el comentario se guarde aparte: solo el ticket sabe si está cerrado.
-    public Result<TicketComment> CreateComment(string author, string body, DateTimeOffset createdAt)
+    public Result<TicketComment> CreateComment(string author, string body, DateTimeOffset createdAt) =>
+        NewComment(author, body, createdAt, fromCustomer: false);
+
+    public Result<TicketComment> CreateCustomerComment(string author, string body, DateTimeOffset createdAt) =>
+        NewComment(author, body, createdAt, fromCustomer: true);
+
+    private Result<TicketComment> NewComment(string author, string body, DateTimeOffset createdAt, bool fromCustomer)
     {
         if (Status is TicketStatus.Closed)
         {
             return Error.BusinessRule($"El ticket {Id} está cerrado y no admite comentarios.");
         }
 
-        return new TicketComment { TicketId = Id, Author = author, Body = body, CreatedAt = createdAt };
+        return new TicketComment { TicketId = Id, Author = author, Body = body, CreatedAt = createdAt, FromCustomer = fromCustomer };
     }
 }

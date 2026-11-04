@@ -56,6 +56,21 @@ IResourceBuilder<ContainerResource> keycloak = builder
     .WithEnvironment("HELPDESK_BFF_CLIENT_SECRET", Secret("HELPDESK_BFF_CLIENT_SECRET"))
     .WithEnvironment("HELPDESK_ADMIN_CLIENT_SECRET", Secret("HELPDESK_ADMIN_CLIENT_SECRET"));
 
+// Un modelo local, para la respuesta sugerida. Comparte el volumen de Compose: los modelos no se vuelven a bajar.
+IResourceBuilder<ContainerResource> ollama = builder
+    .AddContainer("ollama", "ollama/ollama", "0.40.14")
+    .WithHttpEndpoint(port: 11434, targetPort: 11434, name: "http")
+    .WithHttpHealthCheck("/", endpointName: "http")
+    .WithEnvironment("OLLAMA_KEEP_ALIVE", "1h")
+    .WithVolume("helpdesk_ollama-data", "/root/.ollama");
+
+IResourceBuilder<ContainerResource> models = builder
+    .AddContainer("ollama-models", "ollama/ollama", "0.40.14")
+    .WithEntrypoint("/bin/sh")
+    .WithArgs("-c", "for model in paraphrase-multilingual gemma3:4b; do ollama show \"$model\" > /dev/null 2>&1 || ollama pull \"$model\" || exit 1; done")
+    .WithEnvironment("OLLAMA_HOST", ollama.GetEndpoint("http"))
+    .WaitFor(ollama);
+
 const string KeycloakAuthority = "http://localhost:8080/realms/helpdesk";
 
 // ---- La aplicación ----
@@ -71,8 +86,11 @@ IResourceBuilder<ProjectResource> api = builder.AddProject<Projects.HelpDesk_Api
     .WithReference(redis)
     .WithReference(rabbitMq)
     .WithEnvironment("Keycloak__Authority", KeycloakAuthority)
+    .WithEnvironment("Ai__Enabled", "true")
+    .WithEnvironment("Ai__OllamaEndpoint", ollama.GetEndpoint("http"))
     .WithHttpHealthCheck("/health/ready")
     .WaitForCompletion(migrator)
+    .WaitForCompletion(models)
     .WaitFor(redis)
     .WaitFor(rabbitMq)
     .WaitFor(keycloak);
@@ -80,8 +98,11 @@ IResourceBuilder<ProjectResource> api = builder.AddProject<Projects.HelpDesk_Api
 builder.AddProject<Projects.HelpDesk_Worker>("worker")
     .WithReference(database)
     .WithReference(rabbitMq)
+    .WithEnvironment("Ai__Enabled", "true")
+    .WithEnvironment("Ai__OllamaEndpoint", ollama.GetEndpoint("http"))
     .WithHttpHealthCheck("/health/ready")
     .WaitForCompletion(migrator)
+    .WaitForCompletion(models)
     .WaitFor(rabbitMq);
 
 // El portal se compila y lo sirve el BFF, como en producción. Sin el servidor de Vite: Keycloak solo acepta su puerto 5173, que puede estar ocupado.
@@ -99,6 +120,7 @@ builder.AddProject<Projects.HelpDesk_Admin>("admin", launchProfileName: "https")
     .WithEnvironment("Keycloak__Authority", KeycloakAuthority)
     .WithEnvironment("Keycloak__ClientSecret", Secret("HELPDESK_ADMIN_CLIENT_SECRET"))
     .WithEnvironment("HelpDeskApi__BaseUrl", api.GetEndpoint("http"))
+    .WithEnvironment("Suggestions__Enabled", "true")
     .WithHttpHealthCheck("/health/ready", endpointName: "https")
     .WaitFor(api);
 

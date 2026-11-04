@@ -1,5 +1,8 @@
 @using System.ComponentModel.DataAnnotations
+@implements IDisposable
 @inject HelpDeskApiClient Client
+@inject SuggestionsClient SuggestionsApi
+@inject Microsoft.Extensions.Options.IOptions<SuggestionsOptions> Suggestions
 
 @* Al cambiar "draft" por uno nuevo, EditForm crea otro EditContext y rehace lo que tiene dentro: el campo vuelve a
    quedar vacío y sin mensajes de error. *@
@@ -10,10 +13,40 @@
     <MudTextField T="string" Label="Agregar un comentario" Variant="Variant.Outlined" Lines="3" Class="mb-2"
                   @bind-Value="draft.Body" For="@(() => draft.Body)" />
 
-    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="sending">
-        @(sending ? "Enviando…" : "Comentar")
-    </MudButton>
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(sending || suggesting)">
+            @(sending ? "Enviando…" : "Comentar")
+        </MudButton>
+
+        @if (Suggestions.Value.Enabled)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Disabled="@(sending || suggesting)" OnClick="SuggestAsync">
+                @(suggesting ? "Redactando…" : "Sugerir respuesta")
+            </MudButton>
+        }
+    </MudStack>
 </EditForm>
+
+@if (suggestionError is not null)
+{
+    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2" data-testid="suggestion-error">@suggestionError</MudAlert>
+}
+else if (suggested)
+{
+    @* El modelo se puede equivocar, y un ticket de otro cliente puede traer texto malicioso: nada de esto se envía sin que alguien lo lea. *@
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2" data-testid="suggestion-note">
+        Es un borrador: revísalo antes de enviarlo.
+        @if (sources.Count > 0)
+        {
+            <span> Basado en
+                @foreach (SuggestionSource source in sources)
+                {
+                    <MudLink Href="@($"/tickets/{source.TicketId}")" Target="_blank" Class="ml-1">@source.Code</MudLink>
+                }
+            </span>
+        }
+    </MudAlert>
+}
 
 @code {
     [Parameter, EditorRequired]
@@ -29,6 +62,11 @@
     private CommentDraft draft = new();
     private ApiValidationErrors? apiErrors;
     private bool sending;
+    private bool suggesting;
+    private bool suggested;
+    private string? suggestionError;
+    private IReadOnlyList<SuggestionSource> sources = [];
+    private readonly CancellationTokenSource disposed = new();
 
     private async Task SendAsync()
     {
@@ -51,6 +89,57 @@
         {
             sending = false;
         }
+    }
+
+    // Va escribiendo en el campo, a medida que llega. El agente lo edita como cualquier otro texto, y solo se envía con "Comentar".
+    private async Task SuggestAsync()
+    {
+        suggesting = true;
+        suggested = false;
+        suggestionError = null;
+        sources = [];
+        draft.Body = string.Empty;
+
+        try
+        {
+            await foreach (SuggestionEvent item in SuggestionsApi.StreamAsync(TicketId, disposed.Token))
+            {
+                switch (item)
+                {
+                    case SuggestionEvent.Sources found:
+                        sources = found.Items;
+                        break;
+                    case SuggestionEvent.Text text:
+                        draft.Body += text.Chunk;
+                        break;
+                    case SuggestionEvent.Failed failed:
+                        suggestionError = failed.Message;
+                        break;
+                }
+
+                StateHasChanged();
+            }
+
+            suggested = suggestionError is null;
+        }
+        catch (HttpRequestException)
+        {
+            suggestionError = "El asistente no está disponible en este momento.";
+        }
+        catch (OperationCanceledException) when (disposed.IsCancellationRequested)
+        {
+            // Se fue de la pantalla: nadie espera la respuesta.
+        }
+        finally
+        {
+            suggesting = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        disposed.Cancel();
+        disposed.Dispose();
     }
 
     private sealed class CommentDraft

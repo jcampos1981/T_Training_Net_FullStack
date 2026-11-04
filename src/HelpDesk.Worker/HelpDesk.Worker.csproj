@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\HelpDesk.Ai\HelpDesk.Ai.csproj" />
     <ProjectReference Include="..\HelpDesk.Messaging\HelpDesk.Messaging.csproj" />
     <ProjectReference Include="..\HelpDesk.ServiceDefaults\HelpDesk.ServiceDefaults.csproj" />
   </ItemGroup>

@@ -1,11 +1,13 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/HelpDesk.Admin/HelpDesk.Admin.csproj" />
+    <Project Path="src/HelpDesk.Ai/HelpDesk.Ai.csproj" />
     <Project Path="src/HelpDesk.Api/HelpDesk.Api.csproj" />
     <Project Path="src/HelpDesk.AppHost/HelpDesk.AppHost.csproj" />
     <Project Path="src/HelpDesk.Bff/HelpDesk.Bff.csproj" />
     <Project Path="src/HelpDesk.Domain/HelpDesk.Domain.csproj" />
     <Project Path="src/HelpDesk.Importer/HelpDesk.Importer.csproj" />
+    <Project Path="src/HelpDesk.Mcp/HelpDesk.Mcp.csproj" />
     <Project Path="src/HelpDesk.Messaging/HelpDesk.Messaging.csproj" />
     <Project Path="src/HelpDesk.ServiceDefaults/HelpDesk.ServiceDefaults.csproj" />
     <Project Path="src/HelpDesk.Worker/HelpDesk.Worker.csproj" />
@@ -14,6 +16,7 @@
     <Project Path="benchmarks/HelpDesk.Benchmarks/HelpDesk.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/HelpDesk.AiEval/HelpDesk.AiEval.csproj" />
     <Project Path="tests/HelpDesk.Api.IntegrationTests/HelpDesk.Api.IntegrationTests.csproj" />
     <Project Path="tests/HelpDesk.Api.UnitTests/HelpDesk.Api.UnitTests.csproj" />
     <Project Path="tests/HelpDesk.ArchitectureTests/HelpDesk.ArchitectureTests.csproj" />

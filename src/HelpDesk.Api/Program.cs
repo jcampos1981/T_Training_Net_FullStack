@@ -10,6 +10,7 @@ using HelpDesk.Api.Features.Dashboard;
 using HelpDesk.Api.Features.Notifications;
 using HelpDesk.Api.Features.Portal;
 using HelpDesk.Api.Features.Sla;
+using HelpDesk.Api.Features.Suggestions;
 using HelpDesk.Api.Features.Tickets;
 using HelpDesk.Api.Health;
 using HelpDesk.Api.Mediation;
@@ -110,6 +111,7 @@ builder.Services.AddDashboardFeature();
 builder.Services.AddPortalFeature();
 builder.Services.AddNotificationsFeature(ConfigureJson, redis);
 builder.Services.AddSlaFeature();
+builder.Services.AddSuggestionsFeature(builder.Configuration); // la respuesta sugerida, si hay un modelo configurado
 builder.Services.AddApiHealthChecks(redis, builder.Configuration);
 
 WebApplication app = builder.Build();

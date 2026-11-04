@@ -20,6 +20,7 @@ powershell -File tests/e2e/run.ps1 -Long                  # además espera que v
 powershell -File tests/e2e/run.ps1 -Suite containers -NoBuild    # la aplicación en contenedores; no entra en "todas"
 powershell -File tests/e2e/run.ps1 -Suite kubernetes -NoBuild    # en el clúster de deploy/k8s, ya instalada; tampoco
 powershell -File tests/e2e/run.ps1 -Suite aspire                 # orquestada por Aspire; tampoco
+powershell -File tests/e2e/run.ps1 -Suite suggestions            # la respuesta sugerida, con modelos de verdad; tampoco
 ```
 
 Las capturas y la salida de cada suite quedan en `tests/e2e/shots/`, que git ignora.
@@ -32,9 +33,11 @@ Las capturas y la salida de cada suite quedan en `tests/e2e/shots/`, que git ign
 |---|---|
 | `containers` | Las imágenes de producción con `deploy/compose.app.yaml`: usuario no root, sin shell, login real, un aviso en vivo entre aplicaciones, y que la sesión sobreviva a recrear el contenedor |
 | `aspire` | La aplicación orquestada por Aspire: un ticket del portal, visto en el dashboard como una sola traza hasta el worker |
+| `suggestions` | La respuesta sugerida con modelos reales en CPU: indexar al cerrar, el borrador que se escribe de a poco en el panel, sin casos, datos personales, modelo caído y límite por usuario |
 | `kubernetes` | Varias réplicas en un clúster: avisos entre pods, sesiones al matar pods, actualización sin cortes, rollback, readiness sin base de datos, y autoescalado con carga |
 | `api-keycloak`, `api-portal`, `api-bff`, `api-cors` | La API por HTTP, con tokens reales de Keycloak |
 | `hub` | SignalR, con un token de 1 minuto: se cierra la conexión al vencer |
+| `mcp` | El servidor MCP como lo usa un asistente: por stdin y stdout, con los permisos de la cuenta y sin datos personales |
 | `bff-outage` | Keycloak detenido: las sesiones siguen vivas |
 | `sla` | Monitor de SLA: backlog, dos instancias compitiendo, SQL Server detenido, y el panel |
 | `cache` | HybridCache, output caching y Redis entre dos instancias |

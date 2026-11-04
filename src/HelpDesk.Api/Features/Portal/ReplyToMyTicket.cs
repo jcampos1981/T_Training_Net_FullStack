@@ -29,7 +29,7 @@ public static class ReplyToMyTicket
             }
 
             // La misma regla que para el equipo: un ticket cerrado no admite comentarios.
-            Result<TicketComment> comment = ticket.Value.CreateComment(user.AuthorName, request.Body, clock.GetUtcNow());
+            Result<TicketComment> comment = ticket.Value.CreateCustomerComment(user.AuthorName, request.Body, clock.GetUtcNow());
             if (!comment.IsSuccess)
             {
                 return comment.Error;

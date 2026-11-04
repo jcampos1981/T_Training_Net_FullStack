@@ -45,7 +45,7 @@ public static class OpenTicket
             };
 
             // Un ticket recién creado siempre admite comentarios: si esto falla, es un bug y no un resultado posible.
-            TicketComment description = ticket.CreateComment(author, request.Description, now).Value;
+            TicketComment description = ticket.CreateCustomerComment(author, request.Description, now).Value;
 
             // Un solo SaveChanges = una sola transacción: se guardan los dos o ninguno. No hace falta abrir una a
             // mano (como en la reasignación masiva), porque aquí no hay dos sentencias separadas que coordinar.

@@ -17,4 +17,7 @@ public sealed class RateLimitingOptions
     // Login y emisión de tokens, por IP: frena a quien prueba contraseñas en masa.
     [Range(1, 1_000)]
     public int LoginAttemptsPerMinute { get; set; } = 10;
+
+    [Range(1, 100_000)]
+    public int SuggestionsPerMinute { get; set; } = 6;
 }

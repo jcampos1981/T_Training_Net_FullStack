@@ -4,7 +4,8 @@ public enum ErrorKind
 {
     NotFound,
     Forbidden,
-    Conflict
+    Conflict,
+    Unavailable
 }
 
 // Un fallo ESPERADO: es una respuesta posible del caso de uso, no un accidente. Un ticket cerrado que no se puede editar es
@@ -19,6 +20,9 @@ public sealed record Error(ErrorKind Kind, string Title, string Detail)
         ErrorKind.Conflict,
         "Conflicto de edición",
         "Alguien más modificó este registro desde que lo consultaste. Vuelve a cargarlo y aplica tus cambios de nuevo.");
+
+    // Algo de lo que depende este caso de uso no responde, y se puede volver a intentar más tarde.
+    public static Error Unavailable(string detail) => new(ErrorKind.Unavailable, "No disponible", detail);
 
     // Los mensajes de reglas de negocio están escritos para el usuario.
     public static Error BusinessRule(string detail) => new(ErrorKind.Conflict, "Regla de negocio incumplida", detail);

@@ -7,6 +7,7 @@
 #   Logs, trazas y métricas: http://localhost:18888
 #
 # La API no se publica en la máquina: solo la alcanzan el BFF y el panel, por la red interna de Compose.
+# La respuesta sugerida se agrega con otro archivo: compose.ai.yaml.
 # Las contraseñas se leen de deploy/.env (ignorado por git). Plantilla: deploy/.env.example
 #
 # Sin TLS: los navegadores tratan a localhost como un contexto seguro, y por eso aceptan las cookies Secure. Fuera de esta máquina

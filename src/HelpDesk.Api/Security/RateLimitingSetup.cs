@@ -12,6 +12,9 @@ public static class RateLimitingSetup
     // Política para login y emisión de tokens: se aplica con .RequireRateLimiting(Login) en esos endpoints.
     public const string Login = "login";
 
+    // Política para las sugerencias de IA: cada una ocupa la CPU varios segundos o, con un proveedor de pago, cuesta dinero.
+    public const string Suggestions = "suggestions";
+
     private static readonly TimeSpan LoginWindow = TimeSpan.FromMinutes(1);
     private const int LoginWindowSegments = 6; // tramos de 10 s
 
@@ -53,6 +56,15 @@ public static class RateLimitingSetup
                         PermitLimit = value.LoginAttemptsPerMinute,
                         Window = LoginWindow,
                         SegmentsPerWindow = LoginWindowSegments,
+                        QueueLimit = 0
+                    }));
+
+                limiter.AddPolicy(Suggestions, context =>
+                    RateLimitPartition.GetTokenBucketLimiter(ClientKey(context), _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = value.SuggestionsPerMinute,
+                        TokensPerPeriod = value.SuggestionsPerMinute,
+                        ReplenishmentPeriod = TimeSpan.FromMinutes(1),
                         QueueLimit = 0
                     }));
             });

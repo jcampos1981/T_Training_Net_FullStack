@@ -4,11 +4,13 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
 WORKDIR /repo
 COPY global.json Directory.Build.props Directory.Packages.props ./
+COPY src/HelpDesk.Ai/HelpDesk.Ai.csproj src/HelpDesk.Ai/
 COPY src/HelpDesk.Messaging/HelpDesk.Messaging.csproj src/HelpDesk.Messaging/
 COPY src/HelpDesk.ServiceDefaults/HelpDesk.ServiceDefaults.csproj src/HelpDesk.ServiceDefaults/
 COPY src/HelpDesk.Worker/HelpDesk.Worker.csproj src/HelpDesk.Worker/
 RUN dotnet restore src/HelpDesk.Worker/HelpDesk.Worker.csproj -r linux-x64
 
+COPY src/HelpDesk.Ai/ src/HelpDesk.Ai/
 COPY src/HelpDesk.Messaging/ src/HelpDesk.Messaging/
 COPY src/HelpDesk.ServiceDefaults/ src/HelpDesk.ServiceDefaults/
 COPY src/HelpDesk.Worker/ src/HelpDesk.Worker/

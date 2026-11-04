@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using Dapper;
+using HelpDesk.Ai;
 using HelpDesk.Api.Data;
 using HelpDesk.Messaging;
 using HelpDesk.Worker;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
 using Testcontainers.MsSql;
@@ -43,6 +45,43 @@ public sealed class FakeEmailSender : IEmailSender
     }
 }
 
+// Un modelo falso: siempre el mismo vector, y registra qué se le pidió.
+public sealed class FakeEmbeddingGenerator : IEmbeddingGenerator<string, Embedding<float>>
+{
+    private readonly ConcurrentQueue<string> texts = new();
+    private readonly ConcurrentBag<string> failing = [];
+
+    public void FailFor(string text) => failing.Add(text);
+
+    public IEnumerable<string> TextsContaining(string text) => texts.Where(item => item.Contains(text, StringComparison.Ordinal));
+
+    public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(IEnumerable<string> values, EmbeddingGenerationOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        string[] inputs = [.. values];
+
+        if (inputs.Any(input => failing.Any(text => input.Contains(text, StringComparison.Ordinal))))
+        {
+            throw new HttpRequestException("El modelo no responde.");
+        }
+
+        foreach (string input in inputs)
+        {
+            texts.Enqueue(input);
+        }
+
+        float[] vector = new float[AiOptions.EmbeddingDimensions];
+        vector[0] = 1;
+
+        return Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(inputs.Select(_ => new Embedding<float>(vector))));
+    }
+
+    public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+    public void Dispose()
+    {
+    }
+}
+
 public sealed class WorkerFactory : WebApplicationFactory<TicketEmailsConsumer>, IAsyncLifetime
 {
     private const string MaxAttempts = "3";
@@ -59,6 +98,8 @@ public sealed class WorkerFactory : WebApplicationFactory<TicketEmailsConsumer>,
     public string ConnectionString { get; private set; } = string.Empty;
 
     public FakeEmailSender Emails { get; } = new();
+
+    public FakeEmbeddingGenerator Embeddings { get; } = new();
 
     public async ValueTask InitializeAsync()
     {
@@ -85,22 +126,89 @@ public sealed class WorkerFactory : WebApplicationFactory<TicketEmailsConsumer>,
         await channel!.BasicPublishAsync(TicketEventsTopology.EventsExchange, type, mandatory: false, properties, body, Cancel);
     }
 
-    // Lo que quedó en la cola de muertos, si está ahí ese mensaje. Lo saca de la cola.
-    public async Task<bool> IsDeadAsync(Guid messageId)
+    // Lo que hace otra versión del worker al arrancar, con otra espera entre reintentos. En su propio canal: si RabbitMQ lo rechaza, lo cierra.
+    public async Task DeclareQueuesWithDelayAsync(TimeSpan retryDelay)
+    {
+        await using IChannel other = await connection!.CreateChannelAsync(cancellationToken: Cancel);
+
+        await TicketEventsTopology.DeclareConsumerQueuesAsync(other, TicketEventsTopology.EmailsQueue, "ticket.*", retryDelay, Cancel);
+    }
+
+    public async Task<int> InsertTicketAsync(string title, string description)
+    {
+        await using var sql = new SqlConnection(ConnectionString);
+
+        int id = await sql.ExecuteScalarAsync<int>("""
+            DECLARE @Id int = NEXT VALUE FOR dbo.TicketIds;
+            INSERT INTO dbo.Tickets (Id, Title, Priority, Status, CreatedAt) VALUES (@Id, @Title, N'Low', N'Closed', SYSDATETIMEOFFSET());
+            SELECT @Id;
+            """, new { Title = title });
+
+        await sql.ExecuteAsync(
+            "INSERT INTO dbo.TicketComments (TicketId, Author, Body, CreatedAt) VALUES (@Id, N'Prueba', @Body, SYSDATETIMEOFFSET())",
+            new { Id = id, Body = description });
+
+        return id;
+    }
+
+    public async Task<int> CountEmbeddingsAsync(int ticketId)
+    {
+        await using var sql = new SqlConnection(ConnectionString);
+
+        return await sql.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.TicketEmbeddings WHERE TicketId = @ticketId", new { ticketId });
+    }
+
+    public async Task<bool> WaitUntilIndexedAsync(int ticketId)
     {
         for (int attempt = 0; attempt < 100; attempt++)
         {
-            BasicGetResult? dead = await channel!.BasicGetAsync(TicketEventsTopology.EmailsDeadQueue, autoAck: false, Cancel);
+            if (await CountEmbeddingsAsync(ticketId) > 0)
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), Cancel);
+        }
+
+        return false;
+    }
+
+    public async Task<bool> WaitUntilEmbeddedTimesAsync(string text, int times)
+    {
+        for (int attempt = 0; attempt < 100; attempt++)
+        {
+            if (Embeddings.TextsContaining(text).Count() >= times)
+            {
+                // Lo que se cuenta es la llamada al modelo: el guardado viene justo después.
+                await Task.Delay(TimeSpan.FromMilliseconds(300), Cancel);
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), Cancel);
+        }
+
+        return false;
+    }
+
+    // Lo que quedó en la cola de muertos, si está ahí ese mensaje. Lo saca de la cola.
+    public async Task<bool> IsDeadAsync(Guid messageId, string queue = TicketEventsTopology.EmailsQueue, int attempts = 100)
+    {
+        string deadQueue = TicketEventsTopology.DeadQueueOf(queue);
+        IChannel open = channel ?? throw new InvalidOperationException("Sin canal.");
+
+        for (int attempt = 0; attempt < attempts; attempt++)
+        {
+            BasicGetResult? dead = await open.BasicGetAsync(deadQueue, autoAck: false, Cancel);
 
             if (dead?.BasicProperties.MessageId == messageId.ToString())
             {
-                await channel.BasicAckAsync(dead.DeliveryTag, multiple: false, Cancel);
+                await open.BasicAckAsync(dead.DeliveryTag, multiple: false, Cancel);
                 return true;
             }
 
             if (dead is not null)
             {
-                await channel.BasicNackAsync(dead.DeliveryTag, multiple: false, requeue: true, Cancel);
+                await open.BasicNackAsync(dead.DeliveryTag, multiple: false, requeue: true, Cancel);
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(100), Cancel);
@@ -143,10 +251,15 @@ public sealed class WorkerFactory : WebApplicationFactory<TicketEmailsConsumer>,
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:HelpDesk", ConnectionString);
         builder.UseSetting("ConnectionStrings:RabbitMq", rabbitMq.GetConnectionString());
-        builder.UseSetting("TicketEmails:RetryDelay", "00:00:00.300");
-        builder.UseSetting("TicketEmails:MaxAttempts", MaxAttempts);
+        builder.UseSetting("TicketEvents:RetryDelay", "00:00:00.300");
+        builder.UseSetting("TicketEvents:MaxAttempts", MaxAttempts);
+        builder.UseSetting("Ai:Enabled", "true");
         builder.UseSetting("Logging:LogLevel:Default", "Warning");
-        builder.ConfigureTestServices(services => services.AddSingleton<IEmailSender>(Emails));
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IEmailSender>(Emails);
+            services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(Embeddings);
+        });
     }
 
     public override async ValueTask DisposeAsync()
@@ -189,21 +302,23 @@ public sealed class WorkerFactory : WebApplicationFactory<TicketEmailsConsumer>,
 
     private async Task WaitUntilConnectedAsync()
     {
-        TicketEmailsConsumer consumer = Services.GetRequiredService<TicketEmailsConsumer>();
+        TicketEventConsumer[] consumers = [.. Services.GetServices<TicketEventConsumer>()];
+        Assert.Equal(2, consumers.Length);
 
-        for (int attempt = 0; attempt < 100 && !consumer.IsConnected; attempt++)
+        for (int attempt = 0; attempt < 100 && !consumers.All(consumer => consumer.IsConnected); attempt++)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(100), Cancel);
         }
 
-        Assert.True(consumer.IsConnected, "El worker no se conectó a RabbitMQ.");
+        Assert.True(consumers.All(consumer => consumer.IsConnected), "El worker no se conectó a RabbitMQ.");
 
         // IsConnected se vuelve verdadero antes de que termine de declarar sus colas.
         for (int attempt = 0; attempt < 50; attempt++)
         {
             try
             {
-                await channel!.QueueDeclarePassiveAsync(TicketEventsTopology.EmailsDeadQueue, Cancel);
+                await channel!.QueueDeclarePassiveAsync(TicketEventsTopology.DeadQueueOf(TicketEventsTopology.EmailsQueue), Cancel);
+                await channel.QueueDeclarePassiveAsync(TicketEventsTopology.DeadQueueOf(TicketEventsTopology.EmbeddingsQueue), Cancel);
                 return;
             }
             catch (RabbitMQ.Client.Exceptions.OperationInterruptedException)

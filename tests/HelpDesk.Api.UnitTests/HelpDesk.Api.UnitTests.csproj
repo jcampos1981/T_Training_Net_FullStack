@@ -27,6 +27,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\HelpDesk.Api\HelpDesk.Api.csproj" />
+    <ProjectReference Include="..\..\src\HelpDesk.Mcp\HelpDesk.Mcp.csproj" />
   </ItemGroup>
 
 </Project>

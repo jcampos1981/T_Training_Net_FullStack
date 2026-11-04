@@ -5,6 +5,7 @@
 #   powershell -File tests/e2e/run.ps1 -Suite containers -NoBuild    la aplicacion en contenedores (no entra en "todas")
 #   powershell -File tests/e2e/run.ps1 -Suite kubernetes -NoBuild    la aplicacion en el cluster de deploy/k8s, ya instalada (tampoco)
 #   powershell -File tests/e2e/run.ps1 -Suite aspire                 la aplicacion orquestada por Aspire (tampoco)
+#   powershell -File tests/e2e/run.ps1 -Suite suggestions            la respuesta sugerida, con modelos de verdad (tampoco)
 param(
     [string[]]$Suite = @('all'),
     [switch]$Long,
@@ -85,6 +86,7 @@ $definitions = [ordered]@{
     'api-bff'      = { Start-Api; powershell -NoProfile -ExecutionPolicy Bypass -File "$suites\api-bff.ps1" }
     'api-cors'     = { Start-Api; powershell -NoProfile -ExecutionPolicy Bypass -File "$suites\api-cors-ratelimit.ps1" }
     'hub'          = { Start-Api @{ Jwt__AccessTokenMinutes = '1' }; node "$suites\hub.mjs" $repo }
+    'mcp'          = { Start-Api; node "$suites\mcp.mjs" $repo }
     'bff-outage'   = { Start-Api; node "$suites\bff-outage.mjs" $root $repo }
     'sla'          = { node "$suites\sla.mjs" $root $shots $repo }
     'cache'        = { node "$suites\cache.mjs" $repo }
@@ -116,13 +118,14 @@ $needsPort5173 = [ordered]@{
 }
 foreach ($name in $needsPort5173.Keys) { $definitions[$name] = $needsPort5173[$name] }
 
+$composeAll = @('compose', '-f', "$repo\deploy\compose.yaml", '-f', "$repo\deploy\compose.app.yaml", '-f', "$repo\deploy\compose.ai.yaml")
+
 # Las imagenes de produccion, con docker compose. Fuera de "todas": construirlas tarda varios minutos la primera vez, y no usa
 # lo que compilo dotnet build.
 $containers = {
-    $compose = @('compose', '-f', "$repo\deploy\compose.yaml", '-f', "$repo\deploy\compose.app.yaml")
-    docker @compose up -d --build --wait --wait-timeout 300 bff admin worker dashboard
+    docker @composeAll up -d --build --wait --wait-timeout 1200 bff admin worker dashboard
     try { node "$suites\containers.mjs" $root $shots $repo }
-    finally { docker @compose stop admin bff worker api dashboard }
+    finally { docker @composeAll stop admin bff worker api dashboard ollama }
 }
 
 # Con powershell -File, -Suite a,b llega como un solo texto.
@@ -130,9 +133,22 @@ $Suite = @($Suite -split ',')
 $selected = if ($Suite -contains 'all') { @($definitions.Keys) } else { $Suite }
 $definitions['containers'] = $containers
 $definitions['kubernetes'] = { node "$suites\kubernetes.mjs" $root $shots $repo }
+# Con modelos de verdad: en CPU tarda varios minutos, y la primera vez baja varios GB.
+$definitions['suggestions'] = {
+    docker @composeAll run --rm ollama-models
+    dotnet ef database update --no-build --project "$repo\src\HelpDesk.Api"
+    $env:HELPDESK_SQL = $userSecrets.'ConnectionStrings:HelpDesk'
+    $env:HELPDESK_RABBITMQ = "amqp://helpdesk:$(Read-EnvValue 'RABBITMQ_PASSWORD')@localhost:5672"
+    Start-Api @{ Ai__Enabled = 'true'; ConnectionStrings__RabbitMq = $env:HELPDESK_RABBITMQ }
+    try { node "$suites\suggestions.mjs" $root $shots $repo }
+    finally {
+        Remove-Item Env:\HELPDESK_SQL, Env:\HELPDESK_RABBITMQ
+        docker @composeAll stop ollama
+    }
+}
 # Aspire usa los mismos puertos y el mismo volumen que Compose: no pueden correr a la vez.
 $definitions['aspire'] = {
-    docker compose -f "$repo\deploy\compose.yaml" stop
+    docker @composeAll stop
     $appHost = Start-Process dotnet -ArgumentList 'run', '--no-build', '--project', "$repo\src\HelpDesk.AppHost", '--launch-profile', 'http' -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput "$shots\apphost.log" -RedirectStandardError "$shots\apphost.err.log"
     try {
@@ -147,7 +163,7 @@ $definitions['aspire'] = {
         # Solo el AppHost: su orquestador (dcp) se da cuenta y borra los contenedores. Matarlo a él los dejaría vivos, y Aspire comparte el
         # volumen de SQL Server con Compose. Un solo SQL Server puede abrirlo a la vez: el segundo se niega a arrancar.
         Get-Process HelpDesk.AppHost -ErrorAction SilentlyContinue | Stop-Process
-        $aspireContainers = '^(sql|Redis|RabbitMq|keycloak|migrator)-[a-z]{8}$'
+        $aspireContainers = '^(sql|Redis|RabbitMq|keycloak|migrator|ollama|ollama-models)-[a-z]{8}$'
         for ($i = 0; $i -lt 40; $i++) {
             if (-not (docker ps --format '{{.Names}}' | Where-Object { $_ -match $aspireContainers })) { break }
             Start-Sleep -Seconds 3

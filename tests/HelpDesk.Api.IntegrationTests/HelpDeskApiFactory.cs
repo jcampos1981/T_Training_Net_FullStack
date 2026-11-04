@@ -85,6 +85,14 @@ public sealed class HelpDeskApiFactory : WebApplicationFactory<Program>, IAsyncL
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+
+        // Lo que Development revisa al arrancar: que cada servicio se pueda construir. Si no, un error así solo se ve al llamar a ese servicio.
+        builder.UseDefaultServiceProvider(provider =>
+        {
+            provider.ValidateOnBuild = true;
+            provider.ValidateScopes = true;
+        });
+
         builder.UseSetting("ConnectionStrings:HelpDesk", ConnectionString);
         builder.UseSetting("ConnectionStrings:RabbitMq", rabbitMq.GetConnectionString());
         // Un segundo: /health/ready da Degraded si pasan tres vueltas sin terminar, y con las pruebas en paralelo una vuelta puede tardar.

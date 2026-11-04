@@ -1,4 +1,6 @@
+using HelpDesk.Ai;
 using HelpDesk.Api.Features.Accounts;
+using HelpDesk.Api.Features.Suggestions;
 using Microsoft.AspNetCore.Authorization;
 
 namespace HelpDesk.Api.Features.Tickets;
@@ -34,6 +36,12 @@ public static class TicketsFeature
         CreateTicket.Map(tickets);
         UpdateTicket.Map(tickets);
         DeleteTicket.Map(tickets);
+
+        // Sin un modelo configurado, la API funciona igual, y esta ruta no existe.
+        if (AiSetup.IsEnabled(app.ServiceProvider.GetRequiredService<IConfiguration>()))
+        {
+            SuggestReply.Map(tickets);
+        }
 
         return app;
     }

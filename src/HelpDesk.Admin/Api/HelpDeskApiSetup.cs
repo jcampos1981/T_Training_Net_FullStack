@@ -22,7 +22,7 @@ public sealed class HelpDeskApiOptions
 // Para regenerar, con la API corriendo:   dotnet kiota update --output src/HelpDesk.Admin/Api/Generated
 public static class HelpDeskApiSetup
 {
-    private const string HttpClientName = "helpdesk-api";
+    public const string HttpClientName = "helpdesk-api";
 
     public static IServiceCollection AddHelpDeskApi(this IServiceCollection services)
     {
@@ -48,6 +48,9 @@ public static class HelpDeskApiSetup
         });
 
         services.AddScoped<TicketEventsConnection>();
+
+        services.AddOptions<SuggestionsOptions>().BindConfiguration(SuggestionsOptions.SectionName);
+        services.AddScoped<SuggestionsClient>();
 
         return services;
     }

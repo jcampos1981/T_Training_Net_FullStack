@@ -22,4 +22,7 @@ public sealed record TicketComment
     }
 
     public required DateTimeOffset CreatedAt { get; init; }
+
+    // Lo escribió el cliente desde el portal, y no el equipo de soporte. El autor no alcanza para saberlo: es un nombre, y puede repetirse.
+    public bool FromCustomer { get; init; }
 }

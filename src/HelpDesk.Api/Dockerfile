@@ -8,12 +8,14 @@ WORKDIR /repo
 
 # Primero solo lo que define las dependencias: mientras no cambie, Docker reutiliza esta capa y no vuelve a descargar los paquetes.
 COPY global.json Directory.Build.props Directory.Packages.props dotnet-tools.json ./
+COPY src/HelpDesk.Ai/HelpDesk.Ai.csproj src/HelpDesk.Ai/
 COPY src/HelpDesk.Domain/HelpDesk.Domain.csproj src/HelpDesk.Domain/
 COPY src/HelpDesk.Messaging/HelpDesk.Messaging.csproj src/HelpDesk.Messaging/
 COPY src/HelpDesk.ServiceDefaults/HelpDesk.ServiceDefaults.csproj src/HelpDesk.ServiceDefaults/
 COPY src/HelpDesk.Api/HelpDesk.Api.csproj src/HelpDesk.Api/
 RUN dotnet restore src/HelpDesk.Api/HelpDesk.Api.csproj -r linux-x64
 
+COPY src/HelpDesk.Ai/ src/HelpDesk.Ai/
 COPY src/HelpDesk.Domain/ src/HelpDesk.Domain/
 COPY src/HelpDesk.Messaging/ src/HelpDesk.Messaging/
 COPY src/HelpDesk.ServiceDefaults/ src/HelpDesk.ServiceDefaults/

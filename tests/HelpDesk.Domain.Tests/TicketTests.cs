@@ -86,6 +86,26 @@ public sealed class TicketTests
     }
 
     [Fact]
+    public void CreateComment_IsFromTheTeam()
+    {
+        Assert.False(TestTickets.Create().CreateComment("luis", "Ya revisé el servidor.", TestTickets.Now).Value.FromCustomer);
+    }
+
+    [Fact]
+    public void CreateCustomerComment_IsFromTheCustomer()
+    {
+        Assert.True(TestTickets.Create().CreateCustomerComment("camila", "Sigue fallando.", TestTickets.Now).Value.FromCustomer);
+    }
+
+    [Fact]
+    public void CreateCustomerComment_WhenClosed_FailsToo()
+    {
+        Ticket closed = TestTickets.Create(status: TicketStatus.Closed);
+
+        Assert.False(closed.CreateCustomerComment("camila", "¿Sigue abierto?", TestTickets.Now).IsSuccess);
+    }
+
+    [Fact]
     public void CreateComment_WhenClosed_FailsWithABusinessRule()
     {
         Ticket closed = TestTickets.Create(status: TicketStatus.Closed);

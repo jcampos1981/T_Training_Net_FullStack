@@ -13,6 +13,7 @@ public static class ResultHttpExtensions
         ErrorKind.NotFound => TypedResults.NotFound(),
         ErrorKind.Forbidden => TypedResults.Forbid(),
         ErrorKind.Conflict => TypedResults.Problem(error.Detail, statusCode: StatusCodes.Status409Conflict, title: error.Title),
+        ErrorKind.Unavailable => TypedResults.Problem(error.Detail, statusCode: StatusCodes.Status503ServiceUnavailable, title: error.Title),
         _ => throw new ArgumentOutOfRangeException(nameof(error), error.Kind, "Tipo de error sin respuesta HTTP.")
     };
 }

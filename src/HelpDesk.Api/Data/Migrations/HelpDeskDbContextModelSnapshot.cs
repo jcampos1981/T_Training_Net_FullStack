@@ -222,6 +222,9 @@ namespace HelpDesk.Api.Data.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<bool>("FromCustomer")
+                        .HasColumnType("bit");
+
                     b.Property<int>("TicketId")
                         .HasColumnType("int");
 

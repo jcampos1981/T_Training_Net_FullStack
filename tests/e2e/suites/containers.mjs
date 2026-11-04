@@ -1,6 +1,6 @@
 // La aplicación en contenedores, con las imágenes de producción, en Edge headless.
 // Uso: tests/e2e/run.ps1 -Suite containers -NoBuild  (por dentro: node containers.mjs <deps> <capturas> <repo>    Contraseña en HELPDESK_DEV_PASSWORD.)
-//   run.ps1 levanta deploy/compose.yaml + deploy/compose.app.yaml. Esta suite recrea contenedores de verdad.
+//   run.ps1 levanta deploy/compose.yaml + compose.app.yaml + compose.ai.yaml. Esta suite recrea contenedores de verdad.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -22,7 +22,7 @@ function section(title) { console.log(`--- ${title} ---`); }
 
 const docker = (...args) => execFileSync('docker', args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const attempt = (...args) => spawnSync('docker', args, { cwd: repo, encoding: 'utf8' });
-const compose = (...args) => docker('compose', '-f', 'deploy/compose.yaml', '-f', 'deploy/compose.app.yaml', ...args);
+const compose = (...args) => docker('compose', '-f', 'deploy/compose.yaml', '-f', 'deploy/compose.app.yaml', '-f', 'deploy/compose.ai.yaml', ...args);
 const inspect = (container, format) => docker('inspect', '--format', format, `helpdesk-${container}-1`);
 const recreate = (service) => compose('up', '-d', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', '120', service);
 
@@ -171,6 +171,34 @@ try {
   check('El evento pendiente sale solo, y el worker lo recibe', await emailSent(`Correo enviado sobre ${offlineCode}: Recibimos`));
   await customer.goto(`${portal}/tickets/${ticketId}`);
   await comments.first().waitFor({ timeout: 20_000 }).catch(() => {});
+
+  section('Respuesta sugerida: las imágenes de producción con un modelo de verdad');
+  const lauraContext = await browser.newContext();
+  const laura = await lauraContext.newPage();
+  await signInToPortal(laura, 'laura');
+  const viaBff = (method, url, body) => laura.evaluate(async ([verb, address, payload]) => {
+    const response = await fetch(address, { method: verb, headers: { 'X-CSRF': '1', 'content-type': 'application/json' }, body: payload ? JSON.stringify(payload) : undefined });
+    return response.json();
+  }, [method, url, body]);
+
+  const solved = await viaBff('POST', '/api/tickets', { title: `La impresora del piso 3 no imprime (${tag})`, priority: 'Medium', assignedTo: 'laura' });
+  created.push(solved.id);
+  await viaBff('POST', `/api/tickets/${solved.id}/comments`, { body: 'La pantalla dice que no tiene tóner.' });
+  await viaBff('POST', `/api/tickets/${solved.id}/comments`, { body: 'Se reemplazó el cartucho de tóner. Si vuelve a pasar, pide uno nuevo en bodega.' });
+  const toClose = await viaBff('GET', `/api/tickets/${solved.id}`);
+  await viaBff('PUT', `/api/tickets/${solved.id}`, { title: toClose.title, priority: toClose.priority, status: 'Closed', assignedTo: toClose.assignedTo, version: toClose.version });
+  const isIndexed = () => docker('exec', '-e', `SQLCMDPASSWORD=${process.env.MSSQL_SA}`, 'helpdesk-sqlserver-1', '/opt/mssql-tools18/bin/sqlcmd', '-C', '-I', '-S', 'localhost', '-U', 'sa', '-d', 'HelpDesk', '-h', '-1', '-W', '-Q',
+    `SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.TicketEmbeddings WHERE TicketId = ${solved.id}`) === '1';
+  check('El worker indexa el ticket al cerrarse', await waitLogs(isIndexed, 180_000));
+
+  const question = await viaBff('POST', '/api/tickets', { title: `Mi impresora marca falta de tóner (${tag})`, priority: 'Medium', assignedTo: 'laura' });
+  created.push(question.id);
+  await staff.goto(`${panel}/tickets/${question.id}`);
+  await staff.getByRole('button', { name: 'Sugerir respuesta' }).click();
+  const suggestionNote = staff.getByTestId('suggestion-note');
+  check('El panel escribe un borrador, y dice de qué ticket salió', await has(suggestionNote.getByRole('link', { name: `T-${String(solved.id).padStart(5, '0')}` }), 240_000));
+  check('El borrador tiene texto, y queda en el campo sin enviarse', (await commentField.inputValue()).length > 0 && (await viaBff('GET', `/api/tickets/${question.id}/comments`)).length === 0, (await commentField.inputValue()).slice(0, 80));
+  await lauraContext.close();
 
   section('Las trazas llegan al dashboard');
   const traces = await fetch('http://localhost:18888/api/telemetry/resources').then((response) => response.json()).catch(() => []);
