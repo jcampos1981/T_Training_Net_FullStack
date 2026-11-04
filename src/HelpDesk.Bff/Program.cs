@@ -14,9 +14,15 @@ using Microsoft.AspNetCore.HttpOverrides;
 //   npm run dev     → http://localhost:5173, con recarga en caliente; Vite reenvía /api y /bff a este BFF
 //   npm run build   → compila a wwwroot, y este BFF lo sirve en https://localhost:7200 (como en producción)
 
+if (HealthProbe.IsRequested(args))
+{
+    return await HealthProbe.RunAsync();
+}
+
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddProblemDetails();
+builder.Services.AddHelpDeskDataProtection(builder.Configuration, "HelpDesk.Bff"); // cifra la cookie con los tokens
 
 // Detrás de un proxy (el de Vite en desarrollo, un balanceador en producción) la conexión llega desde el proxy y
 // por https. Estos headers dicen el esquema y la IP originales del navegador, y con ellos el BFF arma bien la
@@ -45,3 +51,5 @@ app.MapApiProxy();         // /api/... y /hubs/...
 app.MapFrontendFallback(); // todo lo demás es una pantalla de React: index.html
 
 app.Run();
+
+return 0;

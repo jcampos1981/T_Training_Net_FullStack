@@ -45,14 +45,15 @@ public static class BffAuthentication
             .AddOpenIdConnect();
 
         services.AddOptions<OpenIdConnectOptions>(OpenIdConnectDefaults.AuthenticationScheme)
-            .Configure<IOptions<KeycloakClientOptions>, IHostEnvironment>((oidc, keycloakOptions, environment) =>
+            .Configure<IOptions<KeycloakClientOptions>>((oidc, keycloakOptions) =>
             {
                 KeycloakClientOptions keycloak = keycloakOptions.Value;
 
                 oidc.Authority = keycloak.Authority;
+                oidc.MetadataAddress = keycloak.MetadataAddress;
                 oidc.ClientId = keycloak.ClientId;
                 oidc.ClientSecret = keycloak.ClientSecret;
-                oidc.RequireHttpsMetadata = !environment.IsDevelopment();
+                oidc.RequireHttpsMetadata = keycloak.RequireHttpsMetadata;
 
                 // Authorization Code + PKCE, como Scalar, pero el canje del código lo hace el servidor con su secreto.
                 // Además, si Keycloak lo ofrece (lo hace), los parámetros del login viajan por el canal de atrás

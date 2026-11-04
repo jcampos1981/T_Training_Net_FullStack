@@ -16,9 +16,15 @@ using HelpDesk.Api.Mediation;
 using HelpDesk.Api.Middleware;
 using HelpDesk.Api.OpenApi;
 using HelpDesk.Api.Security;
+using HelpDesk.ServiceDefaults;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using StackExchange.Redis;
+
+if (HealthProbe.IsRequested(args))
+{
+    return await HealthProbe.RunAsync();
+}
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +46,7 @@ builder.Services.ConfigureHttpJsonOptions(options => ConfigureJson(options.Seria
 builder.Services.AddControllers().AddJsonOptions(options => ConfigureJson(options.JsonSerializerOptions));
 
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHelpDeskDataProtection(builder.Configuration, "HelpDesk.Api"); // cifra los tokens de Identity
 
 // En Development la cadena viene de User Secrets; en otros ambientes, de variables de entorno.
 string connectionString = builder.Configuration.GetConnectionString("HelpDesk")
@@ -124,6 +131,8 @@ app.MapSlaFeature();      // alertas de SLA: /api/sla/alerts
 app.MapControllers();     // Controllers (AgentsController)
 
 app.Run();
+
+return 0;
 
 static void ConfigureJson(JsonSerializerOptions options)
 {

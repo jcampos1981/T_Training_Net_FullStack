@@ -13,6 +13,14 @@ public sealed class KeycloakOptions
     [Url]
     public string? Authority { get; set; }
 
+    // De dónde se pide el discovery document, si Authority no se alcanza desde este servidor (ver KeycloakDiscovery).
+    [Url]
+    public string? MetadataAddress { get; set; }
+
+    // Apagarlo solo tiene sentido con un Keycloak local en http: si alguien intercepta el discovery document, puede cambiar las
+    // llaves públicas y la API aceptaría tokens falsos.
+    public bool RequireHttpsMetadata { get; set; } = true;
+
     // El "aud" que deben traer los tokens: el client de Keycloak que representa a esta API. Un token emitido para
     // otra aplicación del mismo realm (otro "aud") se rechaza aunque la firma sea válida.
     [Required]

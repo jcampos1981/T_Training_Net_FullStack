@@ -12,8 +12,14 @@ using MudBlazor.Services;
 //   dotnet run --project src/HelpDesk.Api --launch-profile http
 //   dotnet run --project src/HelpDesk.Admin        → https://localhost:7300 (pedro: agente, laura: supervisora)
 
+if (HealthProbe.IsRequested(args))
+{
+    return await HealthProbe.RunAsync();
+}
+
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHelpDeskDataProtection(builder.Configuration, "HelpDesk.Admin"); // cifra la cookie y el antifalsificación
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 // Los avisos abajo: arriba a la derecha, tapan "Cerrar sesión" durante varios segundos.
@@ -54,3 +60,5 @@ app.MapRazorComponents<App>()
     .RequireAuthorization(AdminAuthentication.StaffPolicy);
 
 app.Run();
+
+return 0;

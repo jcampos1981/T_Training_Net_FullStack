@@ -8,15 +8,47 @@ retryButton.addEventListener("click", retry);
 const resumeButton = document.getElementById("components-resume-button");
 resumeButton.addEventListener("click", resume);
 
+let lastAttemptChecked = 0;
+let serverWasUp = false;
+
 function handleReconnectStateChanged(event) {
     if (event.detail.state === "show") {
         reconnectModal.showModal();
     } else if (event.detail.state === "hide") {
+        lastAttemptChecked = 0;
+        serverWasUp = false;
         reconnectModal.close();
+    } else if (event.detail.state === "retrying") {
+        reloadIfTheCircuitIsGone(event.detail.currentAttempt);
     } else if (event.detail.state === "failed") {
         document.addEventListener("visibilitychange", retryWhenDocumentBecomesVisible);
     } else if (event.detail.state === "rejected") {
         location.reload();
+    }
+}
+
+// Al desplegar una versión nueva se pierden el circuito y los tokens que estaban en memoria. Sin sesión, la reconexión termina en un
+// redirect a Keycloak que la Content-Security-Policy bloquea, y para Blazor eso es un servidor inalcanzable: reintenta para siempre, y
+// la pestaña queda atascada con el servidor ya sano.
+//
+// Si el servidor ya respondía antes del último intento, y ese intento falló igual, no va a reconectar: se recarga la página. No basta
+// con que responda ahora: tras un corte de red, el intento siguiente puede recuperar el circuito, con lo que el usuario estaba escribiendo.
+async function reloadIfTheCircuitIsGone(attempt) {
+    if (attempt <= lastAttemptChecked) {
+        return; // este evento también llega en cada segundo de la cuenta regresiva
+    }
+    lastAttemptChecked = attempt;
+
+    if (serverWasUp) {
+        location.reload();
+        return;
+    }
+
+    try {
+        const response = await fetch("/health/live", { cache: "no-store" });
+        serverWasUp = response.ok;
+    } catch {
+        serverWasUp = false;
     }
 }
 

@@ -56,14 +56,15 @@ public static class AdminAuthentication
             .AddOpenIdConnect();
 
         services.AddOptions<OpenIdConnectOptions>(OpenIdConnectDefaults.AuthenticationScheme)
-            .Configure<IOptions<KeycloakClientOptions>, IHostEnvironment>((oidc, keycloakOptions, environment) =>
+            .Configure<IOptions<KeycloakClientOptions>>((oidc, keycloakOptions) =>
             {
                 KeycloakClientOptions keycloak = keycloakOptions.Value;
 
                 oidc.Authority = keycloak.Authority;
+                oidc.MetadataAddress = keycloak.MetadataAddress;
                 oidc.ClientId = keycloak.ClientId;
                 oidc.ClientSecret = keycloak.ClientSecret;
-                oidc.RequireHttpsMetadata = !environment.IsDevelopment();
+                oidc.RequireHttpsMetadata = keycloak.RequireHttpsMetadata;
 
                 oidc.ResponseType = OpenIdConnectResponseType.Code;
                 oidc.UsePkce = true;

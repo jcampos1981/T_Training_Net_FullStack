@@ -5,6 +5,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <!-- blazor.web.js viene en un paquete, y el SDK lo agrega al restaurar solo si ve archivos .razor. El Dockerfile restaura antes de
+         copiar el código, para aprovechar la caché: sin esto, la imagen compila y arranca, pero el panel queda en blanco por un 404. -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
     <UserSecretsId>83f39d7d-457b-4e02-8c6d-eb9aa31bdf82</UserSecretsId>
     <!-- Un switch sobre un enum sin todos sus valores no compila: si la API agrega un estado y se regenera el
          cliente, TicketLabels avisa. Es la misma garantía que Record<Union, string> en el portal React. -->

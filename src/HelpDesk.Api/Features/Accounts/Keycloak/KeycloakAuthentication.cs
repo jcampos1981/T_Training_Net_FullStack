@@ -22,7 +22,7 @@ public static class KeycloakAuthentication
         builder.AddJwtBearer(SchemeName);
 
         builder.Services.AddOptions<JwtBearerOptions>(SchemeName)
-            .Configure<IOptions<KeycloakOptions>, IHostEnvironment>((bearer, keycloakOptions, environment) =>
+            .Configure<IOptions<KeycloakOptions>>((bearer, keycloakOptions) =>
             {
                 KeycloakOptions keycloak = keycloakOptions.Value;
 
@@ -30,10 +30,8 @@ public static class KeycloakAuthentication
                 // saca el emisor válido y las llaves PÚBLICAS (jwks_uri). Las guarda en memoria, las refresca cada
                 // 24 horas, y antes si llega un token firmado con una llave que no conoce (Keycloak rotó sus llaves).
                 bearer.Authority = keycloak.Authority;
-
-                // Keycloak de desarrollo corre en http. En cualquier otro ambiente se exige https: si alguien
-                // intercepta el discovery document, puede cambiar las llaves y la API aceptaría tokens falsos.
-                bearer.RequireHttpsMetadata = !environment.IsDevelopment();
+                bearer.MetadataAddress = keycloak.MetadataAddress ?? string.Empty;
+                bearer.RequireHttpsMetadata = keycloak.RequireHttpsMetadata;
 
                 bearer.TokenValidationParameters = new TokenValidationParameters
                 {
